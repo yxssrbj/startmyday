@@ -1,0 +1,22 @@
+{
+    "name":"Morning Plan",
+    "tasks":[
+        {   "id":"task-001",
+            "title":"Load a project plan from a JSON file",
+            "deliverable":"A Python script that reads project_plan.json and prints the task title",
+            "first_action":"Create main.py and import Python's json module",
+            "completion_check":"Running main.py prints the title stored in project_plan.json without errors",
+            "prerequisites":[],
+            "estimated_minutes":10
+        },
+        {
+            "id":"task-002",
+            "title":"Validate a project containing multiple tasks",
+            "deliverable":"A Python script that validates every task in a project's tasks list and reports errors with the task ID",
+            "first_action":"Load the JSON into a project variable and loop through project['tasks']",
+            "completion_check":"Two valid tasks pass; setting the second task's estimated_minutes to 0 reports an error identifying task-002",
+            "prerequisites":["task-001"],
+            "estimated_minutes":20
+        }
+    ]
+}
