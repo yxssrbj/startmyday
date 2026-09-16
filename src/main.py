@@ -1,4 +1,7 @@
 import json
+from pathlib import Path
+from database import get_progress, init_db
+from datetime import datetime
 
 required_fields = [
     "id",
@@ -27,6 +30,8 @@ def check_if_string(value, label):
     return None
 
 def validate_task(task):
+        if not isinstance(task, dict):
+            return ['Task must be an object']
         errors = []
         for field in required_fields:
             if field not in task:
@@ -47,7 +52,7 @@ def validate_task(task):
             elif task['estimated_minutes'] <= 0:
                 errors.append('must be greater than 0')
 
-        if "prerequisites" in task:               
+        if "prerequisites" in task:
             if not isinstance(task['prerequisites'],list):
                 errors.append('prerequisites is not a list')
             else:
@@ -57,8 +62,10 @@ def validate_task(task):
                         errors.append(err)
         return errors
 
-with open('../project_plan.json', encoding="utf-8") as f:
-    project = json.load(f)
+
+def validate_project(project):
+    if not isinstance(project, dict) or not isinstance(project.get('tasks'), list):
+        return ['Project must contain a tasks list']
     all_errors = []
 
     for index,task in enumerate(project["tasks"], start=1):
@@ -67,21 +74,69 @@ with open('../project_plan.json', encoding="utf-8") as f:
             for error in errors:
                 all_errors.append(f"Task {index} : {error}")
 
-    if not errors:
+    if not all_errors:
         task_ids = {item['id'] for item in project['tasks']}
 
         if len(task_ids) != len(project['tasks']):
             all_errors.append("Task IDS must be unique")
-        for p in task['prerequisites']:
-            if p == task['id']:
-                all_errors.append(f'{task['id']} cannot depend on itself')
-            elif p not in task_ids:
-                all_errors.append( f"{task['id']} references missing prerequisite {p}")
-        
+        for task in project['tasks']:
+            for p in task['prerequisites']:
+                if p == task['id']:
+                    all_errors.append(f'{task['id']} cannot depend on itself')
+                elif p not in task_ids:
+                    all_errors.append( f"{task['id']} references missing prerequisite {p}")
 
-    if all_errors:
-        for error in all_errors:
+
+    return all_errors
+
+def is_task_ready(task):
+    status = get_progress(task['id'])
+    if status == 'completed':
+        return False
+
+    for p in task['prerequisites']:
+        if get_progress(p) != 'completed':
+            return False
+    return True
+
+
+def select_next_task(project, available_minutes):
+    for task in project['tasks']:
+        if is_task_ready(task):
+            if task["estimated_minutes"] <= available_minutes:
+                return task
+    return None
+
+def calculate_programming_minutes(morning_start, work_start, routine_minutes, gym_minutes, buffer_minutes):
+    available = work_start - morning_start
+    available_minutes = available.total_seconds() / 60
+    programming_minutes = available_minutes - routine_minutes - gym_minutes - buffer_minutes
+    return programming_minutes
+
+def plan_morning(project,morning_start, work_start, routine_minutes, gym_minutes, buffer_minutes):
+    if work_start > morning_start:
+        if routine_minutes > 0 and gym_minutes > 0 and buffer_minutes => 0:
+    
+            task = None
+            programming_minutes = calculate_programming_minutes(morning_start, work_start, routine_minutes, gym_minutes, buffer_minutes)
+            if programming_minutes > 0:
+                task = select_next_task(project, programming_minutes)
+            overbooked_minutes = max(0, -programming_minutes)
+            
+            return {"programming_minutes": programming_minutes,"overbooked_minutes":overbooked_minutes, "task":task}
+
+
+if __name__ == '__main__':
+    init_db()
+    with open(Path(__file__).resolve().parent.parent / 'project_plan.json', encoding='utf-8') as f:
+        project = json.load(f)
+    errors = validate_project(project)
+
+    if errors:
+        for error in errors:
             print(error)
     else:
-        print("Project tasks are valid")
-            
+        for task in project['tasks']:
+            print(f"[{get_progress(task['id'])}] {task['title']}")
+            print('Ready:', is_task_ready(task))
+
