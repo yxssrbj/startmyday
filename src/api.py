@@ -23,6 +23,8 @@ class MorningPlanRequest(BaseModel):
     gym_minutes: int = Field(ge=0)
     buffer_minutes: int = Field(ge=0)
 
+class NoteUpdate(BaseModel):
+    note: str
 
 @asynccontextmanager
 async def lifespan(app):
@@ -47,6 +49,14 @@ def load_project():
         raise HTTPException(422, errors)
     return project
 
+
+def check_task_exists(task_id: str):
+    project = load_project()
+    task = next((task for task in project['tasks'] if task['id'] == task_id),None)
+    if task is None:
+            raise HTTPException(404, 'Task doesnt exist')
+    else:
+        return task
 
 @app.get('/api/project')
 def get_project():
@@ -83,10 +93,7 @@ def get_available_minutes(req: MorningPlanRequest):
 
 @app.patch('/api/tasks/{task_id}/progress')
 def update_progress(task_id: str, update: ProgressUpdate):
-    project = load_project()
-    task = next((task for task in project['tasks'] if task['id'] == task_id), None)
-    if task is None:
-        raise HTTPException(404, 'Task not found')
+    task = check_task_exists(task_id)
     if update.status != 'pending' and any(get_progress(p) != 'completed' for p in task['prerequisites']):
         raise HTTPException(409, 'Complete the prerequisites first.')
     save_progress(task_id, update.status)
@@ -94,10 +101,12 @@ def update_progress(task_id: str, update: ProgressUpdate):
 
 
 @app.put('/api/tasks/{task_id}/note')
-def update_task_note(task_id: str, note:str):
-    save_task_note(task_id, note)
+def update_task_note(task_id: str, update: NoteUpdate):
+    check_task_exists(task_id)
+    save_task_note(task_id, update.note)
     return get_task_note(task_id)
 
 @app.get('/api/tasks/{task_id}/note')
-def get_task_note(task_id: str):
+def read_task_note(task_id: str):
+    check_task_exists(task_id)
     return get_task_note(task_id)

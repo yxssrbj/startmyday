@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MorningSchedule, type ScheduleBlock } from '@/components/morning-schedule';
+import { TaskNote } from '@/components/task-note';
 import { Command, ArrowUpRight, Check, Sparkles } from 'lucide-react';
 import './style.css';
 
@@ -49,6 +50,7 @@ function App() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [noteLocked, setNoteLocked] = useState(false);
   const [notice, setNotice] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [morningInput, setMorningInput] = useState<MorningInput>(initialMorning);
@@ -114,13 +116,13 @@ function App() {
   const done = tasks.filter(t => t.status === 'completed').length;
   const ready = tasks.filter(t => t.ready);
   const focus = tasks.find(t => t.id === (selected ?? recommendedId));
-  const busy = loading || saving;
+  const busy = loading || saving || noteLocked;
 
   return <div className="shell">
     <header><a className="brand" href="/"><span className="sun"><Command aria-hidden="true" /></span> morning plan<span className="brand-dot">.</span></a><span className="header-note">A little direction. A real first step.</span></header>
     <main>
       <section className="intro"><div><p className="eyebrow">YOUR PROGRAMMING SPACE</p><h1>Make room for<br /><em>one good session.</em></h1><p className="subtitle">Pick up where you left off. Build something that matters.</p></div><div className="date-card"><span>YOUR PROJECT</span><strong>{project?.name || 'Morning Plan'}</strong><p>One piece at a time.</p></div></section>
-      {error && <Alert variant="destructive" className="error"><AlertDescription>{error}</AlertDescription> <Button onClick={() => void refresh()} disabled={loading || saving}>Try again</Button></Alert>}
+      {error && <Alert variant="destructive" className="error"><AlertDescription>{error}</AlertDescription> <Button onClick={() => void refresh()} disabled={busy}>Try again</Button></Alert>}
       <p className="sr-only" role="status">{notice}</p>
       {loading && !project ? <p role="status" className="empty">Opening your plan…</p> : project && <>
         <section className="overview" aria-label="Project progress"><div><strong>{done}<small> / {tasks.length}</small></strong><span>tasks completed</span></div><Progress className="progress-track" aria-label="Tasks completed" value={tasks.length ? done / tasks.length * 100 : 0} /><span className="ready-count">{ready.length} ready to work on</span></section>
@@ -150,17 +152,18 @@ function App() {
             ? <MorningSchedule blocks={morningPlan.schedule} />
             : <p className="schedule-unavailable">No schedule was returned. Check the backend response and refresh the plan.</p>
         )}
-        {selected && <Button variant="ghost" size="sm" className="refresh back-to-recommendation" onClick={() => setSelected(null)}>Back to morning recommendation</Button>}
+        {selected && <Button variant="ghost" size="sm" className="refresh back-to-recommendation" disabled={noteLocked} onClick={() => setSelected(null)}>Back to morning recommendation</Button>}
         <div className="workspace"><Card className="focus" role="region" aria-label="Selected task"><p className="eyebrow">{selected ? 'TASK DETAILS' : 'YOUR NEXT STEP'}</p>{focus ? <>
           <div className="task-meta"><Badge variant="secondary" className="pill">{focus.status === 'completed' ? 'Completed' : focus.ready ? 'Ready when you are' : 'Waiting on prerequisites'}</Badge><span>{focus.estimated_minutes} min estimate</span></div>
           <h2>{focus.title}</h2><p className="deliverable">{focus.deliverable}</p>
+          <TaskNote key={focus.id} taskId={focus.id} disabled={loading || saving} onLockChange={setNoteLocked} />
           <div className="instruction"><span className="step-number">01</span><div><h3>Start here</h3><p>{focus.first_action}</p></div></div>
           <div className="instruction"><span className="step-number">02</span><div><h3>You’re done when</h3><p>{focus.completion_check}</p></div></div>
           {!focus.ready && focus.status !== 'completed' && <p className="blocked">Finish first: {focus.prerequisites.filter(id => tasks.find(t => t.id === id)?.status !== 'completed').map(id => tasks.find(t => t.id === id)?.title ?? id).join(', ')}</p>}
           <div className="actions">{focus.status !== 'completed' ? <><Button className="primary" disabled={busy || !focus.ready} onClick={() => void update(focus, 'completed')}>{saving ? 'Saving…' : 'Mark completed'} <ArrowUpRight aria-hidden="true" /></Button>{focus.status === 'pending' && <Button variant="outline" className="secondary" disabled={busy || !focus.ready} onClick={() => void update(focus, 'in_progress')}>Start task</Button>}</> : <Button variant="outline" className="secondary" disabled={busy} onClick={() => void update(focus, 'pending')}>Reopen task</Button>}</div>
           <p className="footnote">Progress is saved on this laptop.</p>
         </> : <div className="empty"><h2>{loading ? 'Finding your next step…' : !recommendationLoaded ? 'Recommendation unavailable' : morningPlan && morningPlan.overbooked_minutes > 0 ? 'Make room before adding a task.' : availableMinutes === 0 ? 'No programming time left.' : tasks.length && done === tasks.length ? 'A good place to pause.' : ready.length ? 'No task fits this session.' : 'No ready tasks yet.'}</h2><p>{loading ? 'Checking your available time and prerequisites.' : !recommendationLoaded ? 'Try again to get a recommendation from your plan.' : morningPlan && morningPlan.overbooked_minutes > 0 ? 'Adjust your start times or reserved activities, then plan your morning again.' : availableMinutes === 0 ? 'Shorten an activity or extend your morning window to fit a programming session.' : tasks.length && done === tasks.length ? 'Every task in this plan is complete. Review your work or add the next task to your project plan.' : ready.length ? 'No ready task fits within ' + availableMinutes + ' minutes. Try a longer session or review your tasks.' : 'Check the tasks and their prerequisites in your project plan.'}</p></div>}</Card>
-        <aside><div className="list-heading"><h2>The build, step by step</h2><Button variant="ghost" size="sm" className="refresh" onClick={() => void refresh()} disabled={loading || saving}>{loading ? 'Loading…' : 'Refresh'}</Button></div><p className="list-caption">Each piece builds on the last.</p><div className="task-list">{tasks.map((task, index) => <Button variant="ghost" key={task.id} className={'task-row ' + (focus?.id === task.id ? 'selected' : '')} onClick={() => setSelected(task.id)} aria-pressed={focus?.id === task.id}><span className={'task-index ' + (task.status === 'completed' ? 'done' : '')}>{task.status === 'completed' ? <Check aria-hidden={true} /> : String(index + 1).padStart(2, '0')}</span><span><strong>{task.title}</strong><small>{task.status === 'completed' ? 'Completed' : task.ready ? task.status === 'in_progress' ? 'In progress' : 'Ready' : 'Blocked'}<span> · </span>{task.estimated_minutes} min</small></span><ArrowUpRight aria-hidden="true" /></Button>)}</div><div className="note"><Sparkles aria-hidden="true" /><p>You don’t need to finish the whole project today.<br /><strong>Just take the next clear step.</strong></p></div></aside></div>
+        <aside><div className="list-heading"><h2>The build, step by step</h2><Button variant="ghost" size="sm" className="refresh" onClick={() => void refresh()} disabled={busy}>{loading ? 'Loading…' : 'Refresh'}</Button></div><p className="list-caption">Each piece builds on the last.</p><div className="task-list">{tasks.map((task, index) => <Button variant="ghost" disabled={noteLocked} key={task.id} className={'task-row ' + (focus?.id === task.id ? 'selected' : '')} onClick={() => setSelected(task.id)} aria-pressed={focus?.id === task.id}><span className={'task-index ' + (task.status === 'completed' ? 'done' : '')}>{task.status === 'completed' ? <Check aria-hidden={true} /> : String(index + 1).padStart(2, '0')}</span><span><strong>{task.title}</strong><small>{task.status === 'completed' ? 'Completed' : task.ready ? task.status === 'in_progress' ? 'In progress' : 'Ready' : 'Blocked'}<span> · </span>{task.estimated_minutes} min</small></span><ArrowUpRight aria-hidden="true" /></Button>)}</div><div className="note"><Sparkles aria-hidden="true" /><p>You don’t need to finish the whole project today.<br /><strong>Just take the next clear step.</strong></p></div></aside></div>
       </>}
     </main><footer><span>MORNING PLAN / A WORK IN PROGRESS</span><span>Built by you, for your day.</span></footer>
   </div>;

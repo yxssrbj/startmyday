@@ -43,6 +43,8 @@ Use Node 20.19+ or 22.12+ (this build was verified with Node 24).
 - Show completed, in-progress, ready, and blocked tasks.
 - Start or complete ready tasks; reopen completed tasks.
 - Save status to progress.db and recalculate readiness.
+- Save a per-task “Continue here tomorrow” note, view its last-saved time, or clear it. Notes load whenever a task is opened.
+- Save or discard note drafts before switching tasks, updating progress, or recalculating the plan; failed saves keep the draft available for retry.
 - Show plan validation and API errors.
 
 Enter a date, morning/work start times, and routine, gym, and buffer durations, then choose **Plan my morning**.
@@ -51,7 +53,7 @@ It displays the programming budget, any overbooking, and the backend's recommend
 Zero durations are allowed. A zero budget has no task; a negative budget displays the time deficit.
 Progress changes and Refresh recalculate using the last submitted inputs. Form edits apply only on submission; refresh of the browser resets inputs to the starting estimates.
 You can still inspect any task in the list and return to the recommendation.
-The morning planner displays the backend's ordered activity blocks with start/end times and durations. Zero-duration activities are omitted by the backend, and overbooked plans show a shortage without a schedule. The programming block covers the full available window, even if the selected task is shorter or no task fits. Continuation notes and generated learning plans are future steps.
+The morning planner displays the backend's ordered activity blocks with start/end times and durations. Zero-duration activities are omitted by the backend, and overbooked plans show a shortage without a schedule. The programming block covers the full available window, even if the selected task is shorter or no task fits. Generated learning plans remain a future step.
 Plans are edited in JSON; use Refresh to reload them. Progress belongs to task IDs:
 keep IDs stable and unique. This version handles one local project.
 Reopening a prerequisite blocks unfinished dependents; previously completed work keeps its status.
