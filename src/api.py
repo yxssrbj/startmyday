@@ -2,16 +2,26 @@ import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
+from datetime import datetime
+from pydantic import BaseModel, Field
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
-from database import get_progress, init_db, save_progress
+from database import get_progress, init_db, save_progress, save_task_note, get_task_note
 from main import is_task_ready, validate_project
 
-from main import select_next_task
+from main import select_next_task, plan_morning
 
 PLAN_PATH = Path(__file__).resolve().parent.parent / 'project_plan.json'
+
+
+class MorningPlanRequest(BaseModel):
+    morning_start: datetime
+    work_start: datetime
+    routine_minutes: int = Field(ge=0)
+    gym_minutes: int = Field(ge=0)
+    buffer_minutes: int = Field(ge=0)
 
 
 @asynccontextmanager
@@ -59,9 +69,15 @@ def get_next_task(available_minutes: int = Query(gt=0)):
     return next_task
 
 
-@app.get("/api/get-available-minutes")
-def get_available_minutes():
-    pass
+@app.post("/api/morning-plan")
+def get_available_minutes(req: MorningPlanRequest):
+    project = load_project()
+    try:
+        plan = plan_morning(project, req.morning_start, req.work_start, req.routine_minutes, req.gym_minutes, req.buffer_minutes)
+        return plan
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    
 
 
 
@@ -75,3 +91,13 @@ def update_progress(task_id: str, update: ProgressUpdate):
         raise HTTPException(409, 'Complete the prerequisites first.')
     save_progress(task_id, update.status)
     return get_project()
+
+
+@app.put('/api/tasks/{task_id}/note')
+def update_task_note(task_id: str, note:str):
+    save_task_note(task_id, note)
+    return get_task_note(task_id)
+
+@app.get('/api/tasks/{task_id}/note')
+def get_task_note(task_id: str):
+    return get_task_note(task_id)

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from database import get_progress, init_db
-from datetime import datetime
+from datetime import datetime, timedelta
 
 required_fields = [
     "id",
@@ -48,7 +48,7 @@ def validate_task(task):
                 errors.append(err)
         if "estimated_minutes" in task:
             if type(task['estimated_minutes']) is not int:
-                errors.append(f'{task['estimated_minutes']} is not of tpye int')
+                errors.append(f"{task['estimated_minutes']} is not of tpye int")
             elif task['estimated_minutes'] <= 0:
                 errors.append('must be greater than 0')
 
@@ -82,7 +82,7 @@ def validate_project(project):
         for task in project['tasks']:
             for p in task['prerequisites']:
                 if p == task['id']:
-                    all_errors.append(f'{task['id']} cannot depend on itself')
+                    all_errors.append(f"{task['id']} cannot depend on itself")
                 elif p not in task_ids:
                     all_errors.append( f"{task['id']} references missing prerequisite {p}")
 
@@ -114,16 +114,43 @@ def calculate_programming_minutes(morning_start, work_start, routine_minutes, gy
     return programming_minutes
 
 def plan_morning(project,morning_start, work_start, routine_minutes, gym_minutes, buffer_minutes):
-    if work_start > morning_start:
-        if routine_minutes > 0 and gym_minutes > 0 and buffer_minutes => 0:
+    if work_start <= morning_start:
+        raise ValueError("Work must start after your morning")
+    if routine_minutes < 0 or gym_minutes < 0 or buffer_minutes < 0:        raise ValueError("Durations must be zero or greater")
     
-            task = None
-            programming_minutes = calculate_programming_minutes(morning_start, work_start, routine_minutes, gym_minutes, buffer_minutes)
-            if programming_minutes > 0:
-                task = select_next_task(project, programming_minutes)
-            overbooked_minutes = max(0, -programming_minutes)
-            
-            return {"programming_minutes": programming_minutes,"overbooked_minutes":overbooked_minutes, "task":task}
+    task = None
+    schedule = []
+    current_start = morning_start
+    programming_minutes = calculate_programming_minutes(morning_start, work_start, routine_minutes, gym_minutes, buffer_minutes)
+    if programming_minutes > 0:
+        task = select_next_task(project, programming_minutes)
+    overbooked_minutes = max(0, -programming_minutes)
+
+
+    activities = [
+        ("routine", routine_minutes),
+        ("programming", programming_minutes),
+        ("gym", gym_minutes),
+        ("buffer", buffer_minutes)
+    ]
+
+    if overbooked_minutes <= 0:
+            for activity, duration in activities:
+                if duration > 0:
+                    end = current_start + timedelta(minutes=duration)
+                    schedule.append({
+                        "activity":activity,
+                        "start":current_start,
+                        "end":end,
+                            })
+                    current_start = end
+
+    return {
+            "programming_minutes": programming_minutes,
+            "overbooked_minutes":overbooked_minutes,
+            "task":task,
+            "schedule":schedule
+    }
 
 
 if __name__ == '__main__':
