@@ -2,13 +2,11 @@ import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
-from datetime import datetime
-from pydantic import BaseModel, Field
+from datetime import date, datetime
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel
-
-from database import get_progress, init_db, save_progress, save_task_note, get_task_note
+from fastapi import FastAPI, HTTPException, Query, status
+from database import get_progress, init_db, save_progress, save_task_note, get_task_note, start_work_session,get_active_session, finish_work_session, get_work_session, get_preferences, save_preferences
 from main import is_task_ready, validate_project
 
 from main import select_next_task, plan_morning
@@ -22,6 +20,28 @@ class MorningPlanRequest(BaseModel):
     routine_minutes: int = Field(ge=0)
     gym_minutes: int = Field(ge=0)
     buffer_minutes: int = Field(ge=0)
+
+class StartSessionRequest(BaseModel):
+    worked_on: date
+
+class FinishSessionRequest(BaseModel):
+    minutes: int = Field(gt=0, strict=True)
+
+
+class MorningPreferences(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    morning_start: str = Field(pattern=r'^([01][0-9]|2[0-3]):[0-5][0-9]$')
+    work_start: str = Field(pattern=r'^([01][0-9]|2[0-3]):[0-5][0-9]$')
+    routine_minutes: int = Field(ge=0, strict=True)
+    gym_minutes: int = Field(ge=0, strict=True)
+    buffer_minutes: int = Field(ge=0, strict=True)
+
+    @model_validator(mode='after')
+    def validate_time_order(self):
+        if self.work_start <= self.morning_start:
+            raise ValueError('Work must start after your morning starts')
+        return self
+
 
 class NoteUpdate(BaseModel):
     note: str
@@ -110,3 +130,41 @@ def update_task_note(task_id: str, update: NoteUpdate):
 def read_task_note(task_id: str):
     check_task_exists(task_id)
     return get_task_note(task_id)
+
+
+@app.get('/api/preferences')
+def read_preferences():
+    return get_preferences()
+
+
+@app.put('/api/preferences')
+def update_preferences(preferences: MorningPreferences):
+    return save_preferences(preferences.model_dump())
+
+
+@app.post('/api/tasks/{task_id}/sessions/start', status_code=status.HTTP_201_CREATED)
+def start_session(task_id:str, request: StartSessionRequest):
+    check_task_exists(task_id)
+    session = start_work_session(task_id, request.worked_on.isoformat())
+    if session is None:
+        raise HTTPException(409, 'Another session is already running')
+    return session
+
+
+@app.get('/api/sessions/active')
+def active_session():
+    active_session = get_active_session()
+    if active_session is None:
+        return None
+    else: return active_session
+
+
+@app.patch('/api/sessions/{session_id}/finish')
+def finish_session(session_id: int, request: FinishSessionRequest):
+    ## create a new db function for finish the session
+    session = get_work_session(session_id)
+    if session is None:
+        raise HTTPException(404, "Session doesn't exist")
+    if session['end_time'] is not None:
+        raise HTTPException(409, "Session is already finished")
+    return finish_work_session(session_id, request.minutes)    

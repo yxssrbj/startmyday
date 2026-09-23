@@ -18,3 +18,36 @@ The fuller version we’re aiming toward would help you go from “I want to lea
 - Let you review and change the plan before following it.
 We’d add those features based on what you find useful while using the MVP.
 The next milestone is one complete morning: enter when work starts → get a feasible schedule and programming task → do the session → save progress and tomorrow’s starting point. That’s the outcome our remaining backend work should serve.
+
+
+
+
+
+Its core idea is:
+AI can write the code, but the learner must become capable of directing, reading, explaining, and verifying it.
+
+It combines:
+- Building one real project with Codex or Claude Code.
+- A coaching layer that questions your understanding.
+- A finite project journey with sections and tasks.
+- A knowledge graph of concepts you’ve encountered.
+- Evidence that you understand each concept.
+- Quizzes and spaced repetition when knowledge starts fading.
+- Clear tracking of what you shipped, what comes next, and what remains locked.
+The important difference is that Altitude is primarily a coding-learning system, while our app began as a daily execution system. Morning Plan answers “What should I work on today, and how do I begin?” Altitude answers “Do I understand what the coding agent built?”
+There is a strong opportunity to combine those ideas without copying the entire product. After each focus session, our app could ask:
+1. What did you build?
+2. How does it work?
+3. What concept did you use?
+4. What evidence proves it works?
+5. What is the exact next action?
+A task would then have three separate states:
+Implemented → Tested → Understood
+That is stronger than marking something “completed” because the program ran once.
+For our product, I would prioritize:
+- Session history and heatmap.
+- End-of-session reflection and continuation.
+- Evidence attached to completed tasks.
+- A short understanding checkpoint before completion.
+- Later, a concept map showing what you understand and what needs review.
+Altitude validates that our concern is real: AI makes building faster, but it can also let you finish projects without developing the mental model needed for internships and debugging. Our app can address that while remaining more focused on your daily routine, procrastination, and starting work consistently.

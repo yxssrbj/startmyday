@@ -51,7 +51,7 @@ Enter a date, morning/work start times, and routine, gym, and buffer durations, 
 The dashboard sends same-day local timestamps to POST /api/morning-plan.
 It displays the programming budget, any overbooking, and the backend's recommended task.
 Zero durations are allowed. A zero budget has no task; a negative budget displays the time deficit.
-Progress changes and Refresh recalculate using the last submitted inputs. Form edits apply only on submission; refresh of the browser resets inputs to the starting estimates.
+Progress changes and Refresh recalculate using the last submitted inputs. Form edits apply only on submission; refresh of the browser loads your saved defaults with today's date.
 You can still inspect any task in the list and return to the recommendation.
 The morning planner displays the backend's ordered activity blocks with start/end times and durations. Zero-duration activities are omitted by the backend, and overbooked plans show a shortage without a schedule. The programming block covers the full available window, even if the selected task is shorter or no task fits. Generated learning plans remain a future step.
 Plans are edited in JSON; use Refresh to reload them. Progress belongs to task IDs:
@@ -83,3 +83,7 @@ API tests use a temporary database and plan. They never update your saved progre
 For isolated manual checks, set MORNING_DB_PATH to a separate file before starting the backend.
 
 Framework references: [Vite](https://vite.dev/guide/) and [FastAPI request bodies](https://fastapi.tiangolo.com/tutorial/body/).
+
+## Morning preferences
+
+Use Save as defaults to remember start times and routine/gym/buffer durations. Plan my morning changes only the current plan. GET and PUT /api/preferences read and replace one settings row; no date is saved. Invalid times or durations return 422 without overwriting previous settings. Overbooked settings are allowed. Restart the backend once to create the new table in an existing database; no manual migration is needed for this feature.
