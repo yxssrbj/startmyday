@@ -6,7 +6,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from fastapi import FastAPI, HTTPException, Query, status
-from database import get_progress, init_db, save_progress, save_task_note, get_task_note, start_work_session,get_active_session, finish_work_session, get_work_session, get_preferences, save_preferences
+from database import get_progress, init_db, save_progress, save_task_note, get_task_note, start_work_session,get_active_session, finish_work_session, get_work_session, get_preferences, save_preferences, get_all_sessions
 from main import is_task_ready, validate_project
 
 from main import select_next_task, plan_morning
@@ -21,8 +21,10 @@ class MorningPlanRequest(BaseModel):
     gym_minutes: int = Field(ge=0)
     buffer_minutes: int = Field(ge=0)
 
+
 class StartSessionRequest(BaseModel):
     worked_on: date
+
 
 class FinishSessionRequest(BaseModel):
     minutes: int = Field(gt=0, strict=True)
@@ -168,3 +170,10 @@ def finish_session(session_id: int, request: FinishSessionRequest):
     if session['end_time'] is not None:
         raise HTTPException(409, "Session is already finished")
     return finish_work_session(session_id, request.minutes)    
+
+@app.get('/api/activity')
+def read_sessions(start: date, end: date):
+    if start > end:
+            raise HTTPException(status_code=422, detail='Start date cannot be after end date')
+    sessions = get_all_sessions(start.isoformat(), end.isoformat())
+    return sessions

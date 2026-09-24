@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MorningSchedule, type ScheduleBlock } from '@/components/morning-schedule';
 import { TaskNote } from '@/components/task-note';
+import { ActivityHeatmap } from '@/components/activity-heatmap';
 import { Mountain, ArrowUpRight, Check, Sparkles, Play, Square, Timer } from 'lucide-react';
 import './style.css';
 
@@ -98,6 +99,7 @@ function App() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showFinish, setShowFinish] = useState(false);
   const [finishMinutes, setFinishMinutes] = useState('1');
+  const [activityVersion, setActivityVersion] = useState(0);
   const latestRequest = useRef(0);
   const validMorning = Boolean(morningInput.date && morningInput.morningStart && morningInput.workStart)
     && [morningInput.routineMinutes, morningInput.gymMinutes, morningInput.bufferMinutes]
@@ -241,6 +243,7 @@ function App() {
       });
       const taskTitle = project?.tasks.find(task => task.id === activeSession.task_id)?.title ?? activeSession.task_id;
       setActiveSession(null); setShowFinish(false);
+      setActivityVersion(version => version + 1);
       setNotice('Saved ' + minutes + ' focused minutes for ' + taskTitle + '.');
     } catch (error) {
       setSessionError(error instanceof Error ? error.message : 'Could not finish the focus session.');
@@ -300,6 +303,7 @@ function App() {
             <div className="finish-actions"><Button onClick={() => void finishSession()} disabled={sessionSaving}>{sessionSaving ? 'Saving...' : 'Save session'}</Button><Button variant="ghost" onClick={() => setShowFinish(false)} disabled={sessionSaving}>Keep working</Button></div>
           </div>}
         </Card>}
+        <ActivityHeatmap refreshKey={activityVersion} />
         {selected && <Button variant="ghost" size="sm" className="refresh back-to-recommendation" disabled={noteLocked} onClick={() => setSelected(null)}>Back to morning recommendation</Button>}
         <div className="workspace"><Card className="focus" role="region" aria-label="Selected task"><p className="eyebrow">{selected ? 'TASK DETAILS' : 'YOUR NEXT STEP'}</p>{focus ? <>
           <div className="task-meta"><Badge variant="secondary" className="pill">{focus.status === 'completed' ? 'Completed' : focus.ready ? 'Ready when you are' : 'Waiting on prerequisites'}</Badge><span>{focus.estimated_minutes} min estimate</span></div>

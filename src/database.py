@@ -100,13 +100,18 @@ def save_task_note(task_id, note):
         if not note.strip():
             con.execute("DELETE FROM task_notes WHERE task_id = ?", (task_id,))
         else:
-            con.execute("INSERT INTO task_notes (task_id, note, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(task_id) DO UPDATE SET note = excluded.note, updated_at = CURRENT_TIMESTAMP", (task_id, note))
+            con.execute("""INSERT INTO task_notes (task_id, note, updated_at) 
+            VALUES (?, ?, CURRENT_TIMESTAMP) 
+            ON CONFLICT(task_id) 
+            DO UPDATE SET note = excluded.note, updated_at = CURRENT_TIMESTAMP""", (task_id, note))
         con.commit()
 
 
 def get_task_note(task_id):
     with closing(sqlite3.connect(DB_PATH)) as con:
-        row = con.execute("SELECT note, updated_at FROM task_notes WHERE task_id = ?", (task_id,)).fetchone()
+        row = con.execute("""SELECT note, updated_at
+          FROM task_notes 
+          WHERE task_id = ?""", (task_id,)).fetchone()
         if row is None:
             return {"note":"", "updated_at":None}
         return {"note":row[0],"updated_at":row[1]}
@@ -119,7 +124,8 @@ def start_work_session(task_id,worked_on):
         ## make it return the end time, actual minutes
         active_session = get_active_session()
         if active_session is None:
-            con.execute("INSERT into work_sessions (task_id, worked_on) VALUES (?, ?)", (task_id, worked_on))
+            con.execute("""INSERT into work_sessions (task_id, worked_on) 
+            VALUES (?, ?)""", (task_id, worked_on))
             con.commit()
             return get_active_session()
         else:
@@ -128,21 +134,50 @@ def start_work_session(task_id,worked_on):
 
 def get_active_session():
     with closing(sqlite3.connect(DB_PATH)) as con:
-        row = con.execute("SELECT session_id, task_id, worked_on, start_time, end_time, actual_minutes FROM work_sessions WHERE end_time IS NULL").fetchone()
+        row = con.execute("""SELECT session_id, task_id, worked_on, start_time, end_time, actual_minutes 
+        FROM work_sessions 
+        WHERE end_time IS NULL""").fetchone()
         if row is None:
             return None
-        return {"session_id":row[0], "task_id":row[1],"worked_on":row[2],"start_time":row[3],"end_time":row[4],"actual_minutes":row[5]}
+        return {"session_id":row[0],
+                 "task_id":row[1],
+                 "worked_on":row[2],
+                 "start_time":row[3],
+                 "end_time":row[4],
+                 "actual_minutes":row[5]}
 
 def get_work_session(session_id):
     with closing(sqlite3.connect(DB_PATH)) as con:
-        row = con.execute("SELECT task_id, worked_on, start_time, end_time, actual_minutes FROM work_sessions WHERE session_id = ?", (session_id,)).fetchone()
+        row = con.execute("""SELECT task_id, worked_on, start_time, end_time, actual_minutes 
+        FROM work_sessions
+          WHERE session_id = ?""", (session_id,)).fetchone()
         if row is None:
             return None
-        return  {"session_id":session_id, "task_id":row[0],"worked_on":row[1],"start_time":row[2],"end_time":row[3],"actual_minutes":row[4]}
+        return  {"session_id":session_id,
+                  "task_id":row[0],
+                  "worked_on":row[1],
+                  "start_time":row[2],
+                  "end_time":row[3],
+                  "actual_minutes":row[4]}
 
 def finish_work_session(session_id, actual_minutes):
     with closing(sqlite3.connect(DB_PATH)) as con:
-        con.execute("""UPDATE work_sessions SET end_time = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), actual_minutes = ? WHERE session_id = ? AND end_time IS NULL""", (actual_minutes, session_id))
+        con.execute("""UPDATE work_sessions
+          SET end_time = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), actual_minutes = ? 
+          WHERE session_id = ? AND end_time IS NULL""", (actual_minutes, session_id))
         con.commit()
         return get_work_session(session_id)
-        
+
+def get_all_sessions(start,end):
+    with closing(sqlite3.connect(DB_PATH)) as con:
+        sessions = []
+        rows = con.execute("""SELECT worked_on, SUM(actual_minutes)
+                    FROM work_sessions
+                    WHERE worked_on BETWEEN ? AND ?
+                    AND end_time IS NOT NULL
+                    AND actual_minutes IS NOT NULL
+                    GROUP BY worked_on
+                    ORDER BY worked_on;""", (start,end)).fetchall()
+        for row in rows:
+            sessions.append({"date":row[0], "minutes":row[1]})
+        return sessions
