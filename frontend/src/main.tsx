@@ -10,7 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MorningSchedule, type ScheduleBlock } from '@/components/morning-schedule';
 import { TaskNote } from '@/components/task-note';
 import { ActivityHeatmap } from '@/components/activity-heatmap';
-import { Mountain, ArrowUpRight, Check, Sparkles, Play, Square, Timer } from 'lucide-react';
+import { Mountain, ArrowUpRight, Check, Sparkles, Play, Square, Timer, Sun, SlidersHorizontal } from 'lucide-react';
 import './style.css';
 
 type Status = 'pending' | 'in_progress' | 'completed';
@@ -75,6 +75,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 function App() {
+  const [view, setView] = useState<'today' | 'settings'>('today');
   const [project, setProject] = useState<Project | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -258,24 +259,33 @@ function App() {
   const activeTask = tasks.find(task => task.id === activeSession?.task_id);
   const busy = loading || saving || savingPreferences || sessionLoading || sessionSaving || noteLocked;
 
-  return <div className="shell">
-    <header><a className="brand" href="/"><span className="sun"><Mountain aria-hidden="true" /></span><span>morning plan</span><span className="brand-dot">.</span></a><span className="header-note">A little direction. A real first step.</span></header>
+  return <div className={'app-shell ' + view + '-view'}>
+    <aside className="app-sidebar">
+      <a className="brand" href="/" aria-label="Morning Plan home"><span className="sun"><Mountain aria-hidden="true" /></span><span className="brand-name">morning plan</span><span className="brand-dot">.</span></a>
+      <nav className="app-nav" aria-label="Main navigation">
+        <Button variant="ghost" className={view === 'today' ? 'active' : ''} aria-current={view === 'today' ? 'page' : undefined} onClick={() => setView('today')}><Sun aria-hidden="true" /><span>Today</span></Button>
+        <Button variant="ghost" className={view === 'settings' ? 'active' : ''} aria-current={view === 'settings' ? 'page' : undefined} disabled={noteLocked} title={noteLocked ? 'Save or discard your note before leaving this task.' : undefined} onClick={() => setView('settings')}><SlidersHorizontal aria-hidden="true" /><span>Schedule setup</span></Button>
+      </nav>
+      <p className="sidebar-note">Your plan opens here every morning. Change durations only when your routine changes.</p>
+    </aside>
+    <div className="app-content">
     <main>
-      <section className="intro"><div><p className="eyebrow">YOUR PROGRAMMING SPACE</p><h1>Make room for<br /><em>one good session.</em></h1><p className="subtitle">Pick up where you left off. Build something that matters.</p></div><div className="date-card"><span>YOUR PROJECT</span><strong>{project?.name || 'Morning Plan'}</strong><p>One piece at a time.</p></div></section>
+      <section className="intro"><div><p className="eyebrow">{view === 'today' ? 'GOOD MORNING' : 'SCHEDULE SETUP'}</p><h1>{view === 'today' ? <>Your day is <em>ready.</em></> : <>Shape your <em>default morning.</em></>}</h1><p className="subtitle">{view === 'today' ? 'No setup required. Start the next useful piece.' : 'These values generate the schedule shown on Today.'}</p></div>{view === 'today' ? <div className="date-card"><span>YOUR PROJECT</span><strong>{project?.name || 'Morning Plan'}</strong><p>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</p></div> : <Button variant="outline" onClick={() => setView('today')}>Back to today</Button>}</section>
       {error && <Alert variant="destructive" className="error"><AlertDescription>{error}</AlertDescription> <Button onClick={() => void refresh()} disabled={busy}>Try again</Button></Alert>}
       {preferencesError && <Alert variant="destructive"><AlertDescription>{preferencesError}</AlertDescription>{!preferencesLoaded && <Button variant="outline" onClick={() => void initializePreferences()} disabled={loading}>Retry loading defaults</Button>}</Alert>}
       {sessionError && <Alert variant="destructive" className="error"><AlertDescription>{sessionError}</AlertDescription></Alert>}
       <p className="sr-only" role="status">{notice}</p>
       {loading && !project ? <p role="status" className="empty">Opening your plan…</p> : project && <>
-        <section className="overview" aria-label="Project progress"><div><strong>{done}<small> / {tasks.length}</small></strong><span>tasks completed</span></div><Progress className="progress-track" aria-label="Tasks completed" value={tasks.length ? done / tasks.length * 100 : 0} /><span className="ready-count">{ready.length} ready to work on</span></section>
-        <form className="morning-form" onSubmit={event => {
+        <section className="overview today-only" aria-label="Project progress"><div><strong>{done}<small> / {tasks.length}</small></strong><span>tasks completed</span></div><Progress className="progress-track" aria-label="Tasks completed" value={tasks.length ? done / tasks.length * 100 : 0} /><span className="ready-count">{ready.length} ready to work on</span></section>
+        <form className="morning-form settings-only" onSubmit={event => {
           event.preventDefault();
           if (!validMorning || busy) return;
           setAppliedMorning({ ...morningInput });
           setSelected(null);
+          setView('today');
           void refresh(morningInput);
         }}>
-          <div className="morning-form-heading"><div><h2>Plan your morning</h2><p>Reserve time for your day. Use what remains for programming.</p></div><Badge variant="outline">Local time · same day</Badge></div>
+          <div className="morning-form-heading"><div><h2>Default timing</h2><p>Change these when your routine or work hours change.</p></div><Badge variant="outline">Local time · same day</Badge></div>
           <div className="morning-fields">
             <div><Label htmlFor="plan-date">Date</Label><Input id="plan-date" type="date" required value={morningInput.date} disabled={busy} onChange={event => setMorningField('date', event.target.value)} /></div>
             <div><Label htmlFor="morning-start">Morning starts</Label><Input id="morning-start" type="time" required value={morningInput.morningStart} disabled={busy} onChange={event => setMorningField('morningStart', event.target.value)} /></div>
@@ -284,9 +294,10 @@ function App() {
             <div><Label htmlFor="gym-minutes">Gym (minutes)</Label><Input id="gym-minutes" type="number" min="0" step="1" required value={morningInput.gymMinutes} disabled={busy} onChange={event => setMorningField('gymMinutes', event.target.value)} /><p>Include travel and your shower.</p></div>
             <div><Label htmlFor="buffer-minutes">Before-work buffer (minutes)</Label><Input id="buffer-minutes" type="number" min="0" step="1" required value={morningInput.bufferMinutes} disabled={busy} onChange={event => setMorningField('bufferMinutes', event.target.value)} /><p>Leave room before your shift.</p></div>
           </div>
-          <div className="morning-form-footer"><p>{hasChanges ? 'Changes not applied yet. Recalculate to update the result below.' : 'Adjust these starting estimates to match your day.'}</p><div className="preferences-actions"><Button type="button" variant="outline" disabled={busy || !validMorning} onClick={() => void saveDefaults()}>{savingPreferences ? 'Saving defaults...' : 'Save as defaults'}</Button><Button type="submit" disabled={busy || !validMorning}>{loading ? 'Planning…' : 'Plan my morning'}</Button></div></div>
+          <div className="morning-form-footer"><p>{hasChanges ? 'Changes not applied yet. Apply them to update Today.' : 'These values currently shape your Today page.'}</p><div className="preferences-actions"><Button type="button" variant="outline" disabled={busy || !validMorning} onClick={() => void saveDefaults()}>{savingPreferences ? 'Saving defaults...' : 'Save as defaults'}</Button><Button type="submit" disabled={busy || !validMorning}>{loading ? 'Planning…' : 'Apply and return to Today'}</Button></div></div>
           <p className="preferences-status" role="status">{preferencesMessage}</p>
         </form>
+        <div className="today-only">
         {morningPlan && <section className={'budget-result ' + (morningPlan.overbooked_minutes > 0 ? 'overbooked' : '')} role="status" aria-label="Morning budget">
           {morningPlan.overbooked_minutes > 0 ? <><strong>Overbooked by {morningPlan.overbooked_minutes} minutes</strong><p>Your activities exceed the time before work. Free up at least {morningPlan.overbooked_minutes} minutes before adding programming.</p></> : <><strong>{availableMinutes} minutes for programming</strong><p>{availableMinutes === 0 ? 'Your routine, gym, and buffer fill the whole window. Adjust them to make room for programming.' : 'After your routine, gym, and before-work buffer.'}</p></>}
         </section>}
@@ -303,7 +314,6 @@ function App() {
             <div className="finish-actions"><Button onClick={() => void finishSession()} disabled={sessionSaving}>{sessionSaving ? 'Saving...' : 'Save session'}</Button><Button variant="ghost" onClick={() => setShowFinish(false)} disabled={sessionSaving}>Keep working</Button></div>
           </div>}
         </Card>}
-        <ActivityHeatmap refreshKey={activityVersion} />
         {selected && <Button variant="ghost" size="sm" className="refresh back-to-recommendation" disabled={noteLocked} onClick={() => setSelected(null)}>Back to morning recommendation</Button>}
         <div className="workspace"><Card className="focus" role="region" aria-label="Selected task"><p className="eyebrow">{selected ? 'TASK DETAILS' : 'YOUR NEXT STEP'}</p>{focus ? <>
           <div className="task-meta"><Badge variant="secondary" className="pill">{focus.status === 'completed' ? 'Completed' : focus.ready ? 'Ready when you are' : 'Waiting on prerequisites'}</Badge><span>{focus.estimated_minutes} min estimate</span></div>
@@ -317,8 +327,11 @@ function App() {
           <p className="footnote">Progress is saved on this laptop.</p>
         </> : <div className="empty"><h2>{loading ? 'Finding your next step…' : !recommendationLoaded ? 'Recommendation unavailable' : morningPlan && morningPlan.overbooked_minutes > 0 ? 'Make room before adding a task.' : availableMinutes === 0 ? 'No programming time left.' : tasks.length && done === tasks.length ? 'A good place to pause.' : ready.length ? 'No task fits this session.' : 'No ready tasks yet.'}</h2><p>{loading ? 'Checking your available time and prerequisites.' : !recommendationLoaded ? 'Try again to get a recommendation from your plan.' : morningPlan && morningPlan.overbooked_minutes > 0 ? 'Adjust your start times or reserved activities, then plan your morning again.' : availableMinutes === 0 ? 'Shorten an activity or extend your morning window to fit a programming session.' : tasks.length && done === tasks.length ? 'Every task in this plan is complete. Review your work or add the next task to your project plan.' : ready.length ? 'No ready task fits within ' + availableMinutes + ' minutes. Try a longer session or review your tasks.' : 'Check the tasks and their prerequisites in your project plan.'}</p></div>}</Card>
         <aside><div className="list-heading"><h2>The build, step by step</h2><Button variant="ghost" size="sm" className="refresh" onClick={() => void refresh()} disabled={busy}>{loading ? 'Loading…' : 'Refresh'}</Button></div><p className="list-caption">Each piece builds on the last.</p><div className="task-list">{tasks.map((task, index) => <Button variant="ghost" disabled={noteLocked} key={task.id} className={'task-row ' + (focus?.id === task.id ? 'selected' : '')} onClick={() => setSelected(task.id)} aria-pressed={focus?.id === task.id}><span className={'task-index ' + (task.status === 'completed' ? 'done' : '')}>{task.status === 'completed' ? <Check aria-hidden={true} /> : String(index + 1).padStart(2, '0')}</span><span><strong>{task.title}</strong><small>{task.status === 'completed' ? 'Completed' : task.ready ? task.status === 'in_progress' ? 'In progress' : 'Ready' : 'Blocked'}<span> · </span>{task.estimated_minutes} min</small></span><ArrowUpRight aria-hidden="true" /></Button>)}</div><div className="note"><Sparkles aria-hidden="true" /><p>You don’t need to finish the whole project today.<br /><strong>Just take the next clear step.</strong></p></div></aside></div>
+        <ActivityHeatmap refreshKey={activityVersion} />
+        </div>
       </>}
     </main><footer><span>MORNING PLAN / A WORK IN PROGRESS</span><span>Built by you, for your day.</span></footer>
+    </div>
   </div>;
 }
 
