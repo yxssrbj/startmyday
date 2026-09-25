@@ -28,6 +28,9 @@ class StartSessionRequest(BaseModel):
 
 class FinishSessionRequest(BaseModel):
     minutes: int = Field(gt=0, strict=True)
+    summary: str
+    evidence: str
+    next_action: str
 
 
 class MorningPreferences(BaseModel):
@@ -169,7 +172,7 @@ def finish_session(session_id: int, request: FinishSessionRequest):
         raise HTTPException(404, "Session doesn't exist")
     if session['end_time'] is not None:
         raise HTTPException(409, "Session is already finished")
-    return finish_work_session(session_id, request.minutes)    
+    return finish_work_session(session_id, request.minutes, request.summary, request.evidence, request.next_action)    
 
 @app.get('/api/activity')
 def read_sessions(start: date, end: date):

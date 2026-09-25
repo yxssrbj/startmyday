@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -36,6 +37,7 @@ type Preferences = {
 type WorkSession = {
   session_id: number; task_id: string; worked_on: string;
   start_time: string; end_time: string | null; actual_minutes: number | null;
+  summary?: string | null; evidence?: string | null; next_action?: string | null;
 };
 
 function localDate() {
@@ -106,6 +108,9 @@ function App() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showFinish, setShowFinish] = useState(false);
   const [finishMinutes, setFinishMinutes] = useState('1');
+  const [finishSummary, setFinishSummary] = useState('');
+  const [finishEvidence, setFinishEvidence] = useState('');
+  const [finishNextAction, setFinishNextAction] = useState('');
   const [activityVersion, setActivityVersion] = useState(0);
   const [showReplan, setShowReplan] = useState(false);
   const [replanStart, setReplanStart] = useState(localTime);
@@ -272,6 +277,7 @@ function App() {
 
   function openFinishSession() {
     setFinishMinutes(String(Math.max(1, Math.round(elapsedSeconds / 60))));
+    setFinishSummary(''); setFinishEvidence(''); setFinishNextAction('');
     setShowFinish(true); setSessionError('');
   }
 
@@ -282,13 +288,27 @@ function App() {
       setSessionError('Enter the number of focused minutes as a positive whole number.');
       return;
     }
+    if (!finishSummary.trim()) {
+      setSessionError('Write a short summary of what you accomplished.');
+      return;
+    }
+    if (!finishNextAction.trim()) {
+      setSessionError('Write the exact next action so tomorrow has a clear starting point.');
+      return;
+    }
     setSessionSaving(true); setSessionError(''); setNotice('');
     try {
       await request<WorkSession>('/api/sessions/' + activeSession.session_id + '/finish', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ minutes }),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          minutes,
+          summary: finishSummary.trim(),
+          evidence: finishEvidence.trim(),
+          next_action: finishNextAction.trim(),
+        }),
       });
       const taskTitle = project?.tasks.find(task => task.id === activeSession.task_id)?.title ?? activeSession.task_id;
       setActiveSession(null); setShowFinish(false);
+      setFinishSummary(''); setFinishEvidence(''); setFinishNextAction('');
       setActivityVersion(version => version + 1);
       setNotice('Saved ' + minutes + ' focused minutes for ' + taskTitle + '.');
     } catch (error) {
@@ -364,13 +384,19 @@ function App() {
             ? <MorningSchedule blocks={morningPlan.schedule} />
             : <p className="schedule-unavailable">No schedule was returned. Check the backend response and refresh the plan.</p>
         )}
-        {activeSession && <Card className="session-card" role="region" aria-label="Active focus session">
+        {activeSession && <Card className={'session-card ' + (showFinish ? 'checkout-open' : '')} role="region" aria-label="Active focus session">
           <div className="session-live"><span className="session-pulse" aria-hidden="true" /><div><p className="eyebrow">FOCUS SESSION IN PROGRESS</p><h2>{activeTask?.title ?? activeSession.task_id}</h2><p>Keep this page open or come back later—the session is saved.</p></div></div>
           <div className="session-clock"><Timer aria-hidden="true" /><strong aria-label={'Elapsed time ' + formatElapsed(elapsedSeconds)}>{formatElapsed(elapsedSeconds)}</strong><span>elapsed</span></div>
-          {!showFinish ? <Button onClick={openFinishSession} disabled={sessionSaving}><Square aria-hidden="true" /> Finish session</Button> : <div className="finish-session">
-            <div><Label htmlFor="focused-minutes">Focused minutes</Label><Input id="focused-minutes" type="number" min="1" step="1" required value={finishMinutes} disabled={sessionSaving} onChange={event => setFinishMinutes(event.target.value)} /><p>Adjust this if the timer includes a break or distraction.</p></div>
-            <div className="finish-actions"><Button onClick={() => void finishSession()} disabled={sessionSaving}>{sessionSaving ? 'Saving...' : 'Save session'}</Button><Button variant="ghost" onClick={() => setShowFinish(false)} disabled={sessionSaving}>Keep working</Button></div>
-          </div>}
+          {!showFinish ? <Button onClick={openFinishSession} disabled={sessionSaving}><Square aria-hidden="true" /> Finish session</Button> : <form className="finish-session" onSubmit={event => { event.preventDefault(); void finishSession(); }}>
+            <div className="finish-heading"><div><p className="eyebrow">SESSION CHECKOUT</p><h3>Leave tomorrow a clear starting point.</h3></div><p>Capture the result while it is still fresh. Evidence is optional.</p></div>
+            <div className="finish-fields">
+              <div className="finish-minutes"><Label htmlFor="focused-minutes">Focused minutes</Label><Input id="focused-minutes" type="number" min="1" step="1" required value={finishMinutes} disabled={sessionSaving} onChange={event => setFinishMinutes(event.target.value)} /><p>Remove breaks or distracted time.</p></div>
+              <div><Label htmlFor="session-summary">What did you accomplish?</Label><Textarea id="session-summary" required value={finishSummary} disabled={sessionSaving} placeholder="Added validation for missing prerequisite IDs." onChange={event => setFinishSummary(event.target.value)} /></div>
+              <div><Label htmlFor="session-evidence">What proves it works? <span>Optional</span></Label><Textarea id="session-evidence" value={finishEvidence} disabled={sessionSaving} placeholder="Three validation tests pass." onChange={event => setFinishEvidence(event.target.value)} /></div>
+              <div><Label htmlFor="session-next-action">What is the exact next action?</Label><Textarea id="session-next-action" required value={finishNextAction} disabled={sessionSaving} placeholder="Add the circular prerequisite test in tests/test_validation.py." onChange={event => setFinishNextAction(event.target.value)} /></div>
+            </div>
+            <div className="finish-footer"><p>Saving this closes the timer and adds the minutes to your activity.</p><div className="finish-actions"><Button type="button" variant="ghost" onClick={() => setShowFinish(false)} disabled={sessionSaving}>Keep working</Button><Button type="submit" disabled={sessionSaving}>{sessionSaving ? 'Saving...' : 'Save and finish'}</Button></div></div>
+          </form>}
         </Card>}
         {selected && <Button variant="ghost" size="sm" className="refresh back-to-recommendation" disabled={noteLocked} onClick={() => setSelected(null)}>Back to morning recommendation</Button>}
         <div className="workspace"><Card className="focus" role="region" aria-label="Selected task"><p className="eyebrow">{selected ? 'TASK DETAILS' : 'YOUR NEXT STEP'}</p>{focus ? <>

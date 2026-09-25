@@ -40,11 +40,20 @@ def init_db():
                         worked_on TEXT NOT NULL,
                         start_time TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                         end_time TIMESTAMP,
-                        actual_minutes INTEGER 
-        
-        
+                        actual_minutes INTEGER,
+                        summary TEXT,
+                        evidence TEXT,
+                        next_action TEXT
                 )""")
-        
+
+        existing_session_columns = {
+            row[1] for row in con.execute("PRAGMA table_info(work_sessions)")
+        }
+        for column_name in ("summary", "evidence", "next_action"):
+            if column_name not in existing_session_columns:
+                con.execute(f"ALTER TABLE work_sessions ADD COLUMN {column_name} TEXT")
+
+
         con.commit()
 
 
@@ -148,7 +157,7 @@ def get_active_session():
 
 def get_work_session(session_id):
     with closing(sqlite3.connect(DB_PATH)) as con:
-        row = con.execute("""SELECT task_id, worked_on, start_time, end_time, actual_minutes 
+        row = con.execute("""SELECT task_id, worked_on, start_time, end_time, actual_minutes, summary, evidence, next_action
         FROM work_sessions
           WHERE session_id = ?""", (session_id,)).fetchone()
         if row is None:
@@ -158,13 +167,16 @@ def get_work_session(session_id):
                   "worked_on":row[1],
                   "start_time":row[2],
                   "end_time":row[3],
-                  "actual_minutes":row[4]}
+                  "actual_minutes":row[4],
+                  "summary":row[5],
+                  "evidence":row[6],
+                  "next_action":row[7]}
 
-def finish_work_session(session_id, actual_minutes):
+def finish_work_session(session_id, actual_minutes, summary, evidence, next_action):
     with closing(sqlite3.connect(DB_PATH)) as con:
         con.execute("""UPDATE work_sessions
-          SET end_time = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), actual_minutes = ? 
-          WHERE session_id = ? AND end_time IS NULL""", (actual_minutes, session_id))
+          SET end_time = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), actual_minutes = ?, summary = ?, evidence = ?, next_action = ?
+          WHERE session_id = ? AND end_time IS NULL""", (actual_minutes, summary, evidence, next_action, session_id))
         con.commit()
         return get_work_session(session_id)
 
