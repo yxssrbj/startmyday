@@ -167,12 +167,18 @@ def active_session():
 @app.patch('/api/sessions/{session_id}/finish')
 def finish_session(session_id: int, request: FinishSessionRequest):
     ## create a new db function for finish the session
+    if not request.summary.strip() or not request.next_action.strip():
+        raise HTTPException(status_code=422, detail='Summary or next action  fields must not be blank')
     session = get_work_session(session_id)
     if session is None:
         raise HTTPException(404, "Session doesn't exist")
     if session['end_time'] is not None:
         raise HTTPException(409, "Session is already finished")
-    return finish_work_session(session_id, request.minutes, request.summary, request.evidence, request.next_action)    
+    return finish_work_session(session_id,
+                                request.minutes,
+                                  request.summary.strip(),
+                                request.evidence.strip(),
+                                  request.next_action.strip())    
 
 @app.get('/api/activity')
 def read_sessions(start: date, end: date):

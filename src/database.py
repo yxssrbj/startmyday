@@ -174,9 +174,16 @@ def get_work_session(session_id):
 
 def finish_work_session(session_id, actual_minutes, summary, evidence, next_action):
     with closing(sqlite3.connect(DB_PATH)) as con:
+        row = con.execute("SELECT task_id from work_sessions WHERE session_id = ?", (session_id,)).fetchone()
         con.execute("""UPDATE work_sessions
           SET end_time = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), actual_minutes = ?, summary = ?, evidence = ?, next_action = ?
           WHERE session_id = ? AND end_time IS NULL""", (actual_minutes, summary, evidence, next_action, session_id))
+        
+        con.execute("""INSERT INTO task_notes (task_id, note, updated_at) 
+        VALUES (?,?, CURRENT_TIMESTAMP)
+          ON CONFLICT(task_id) DO UPDATE SET
+        note = excluded.note,
+        updated_at = CURRENT_TIMESTAMP""", (row[0], next_action))
         con.commit()
         return get_work_session(session_id)
 

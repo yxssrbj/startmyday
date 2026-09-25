@@ -39,6 +39,7 @@ type WorkSession = {
   start_time: string; end_time: string | null; actual_minutes: number | null;
   summary?: string | null; evidence?: string | null; next_action?: string | null;
 };
+type TaskNoteResponse = { note: string; updated_at: string | null };
 
 function localDate() {
   const today = new Date();
@@ -111,6 +112,8 @@ function App() {
   const [finishSummary, setFinishSummary] = useState('');
   const [finishEvidence, setFinishEvidence] = useState('');
   const [finishNextAction, setFinishNextAction] = useState('');
+  const [continuationNote, setContinuationNote] = useState('');
+  const [continuationVersion, setContinuationVersion] = useState(0);
   const [activityVersion, setActivityVersion] = useState(0);
   const [showReplan, setShowReplan] = useState(false);
   const [replanStart, setReplanStart] = useState(localTime);
@@ -201,6 +204,18 @@ function App() {
     const timerId = window.setInterval(updateElapsed, 1000);
     return () => window.clearInterval(timerId);
   }, [activeSession]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!recommendedId) {
+      setContinuationNote('');
+      return () => { cancelled = true; };
+    }
+    void request<TaskNoteResponse>('/api/tasks/' + encodeURIComponent(recommendedId) + '/note')
+      .then(result => { if (!cancelled) setContinuationNote(result.note); })
+      .catch(() => { if (!cancelled) setContinuationNote(''); });
+    return () => { cancelled = true; };
+  }, [recommendedId, continuationVersion]);
 
   async function saveDefaults() {
     if (!validMorning || busy) return;
@@ -298,7 +313,7 @@ function App() {
     }
     setSessionSaving(true); setSessionError(''); setNotice('');
     try {
-      await request<WorkSession>('/api/sessions/' + activeSession.session_id + '/finish', {
+      const finished = await request<WorkSession>('/api/sessions/' + activeSession.session_id + '/finish', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
           minutes,
           summary: finishSummary.trim(),
@@ -307,8 +322,10 @@ function App() {
         }),
       });
       const taskTitle = project?.tasks.find(task => task.id === activeSession.task_id)?.title ?? activeSession.task_id;
+      if (finished.task_id === recommendedId) setContinuationNote(finished.next_action ?? '');
       setActiveSession(null); setShowFinish(false);
       setFinishSummary(''); setFinishEvidence(''); setFinishNextAction('');
+      setContinuationVersion(version => version + 1);
       setActivityVersion(version => version + 1);
       setNotice('Saved ' + minutes + ' focused minutes for ' + taskTitle + '.');
     } catch (error) {
@@ -366,7 +383,7 @@ function App() {
         </form>
         <div className="today-only">
         {!activeSession && recommendedTask && <Card className="morning-launch" role="region" aria-labelledby="morning-launch-title">
-          <div className="launch-copy"><p className="eyebrow">START HERE</p><div className="launch-meta"><span>{recommendedTask.estimated_minutes} min estimate</span><span>{availableMinutes} min available</span></div><h2 id="morning-launch-title">{recommendedTask.title}</h2><p className="launch-action"><strong>Your first action</strong>{recommendedTask.first_action}</p></div>
+          <div className="launch-copy"><p className="eyebrow">START HERE</p><div className="launch-meta"><span>{recommendedTask.estimated_minutes} min estimate</span><span>{availableMinutes} min available</span></div><h2 id="morning-launch-title">{recommendedTask.title}</h2><p className="launch-action"><strong>{continuationNote ? 'Continue from here' : 'Your first action'}</strong>{continuationNote || recommendedTask.first_action}</p></div>
           <div className="launch-controls"><Button className="launch-button" disabled={busy} onClick={() => void startSession(recommendedTask)}><Play aria-hidden="true" />{sessionSaving ? 'Starting...' : 'Start focus session'}</Button><Button variant="outline" disabled={busy} onClick={openReplan}>Replan from now</Button></div>
         </Card>}
         {!activeSession && recommendationLoaded && !recommendedTask && <Card className="morning-launch launch-unavailable"><div className="launch-copy"><p className="eyebrow">NO SESSION READY</p><h2>{morningPlan?.overbooked_minutes ? 'Your morning needs more room.' : 'No ready task fits this window.'}</h2><p className="launch-action">Adjust the schedule or complete a prerequisite to create a startable session.</p></div><Button variant="outline" onClick={() => setView('settings')}>Adjust schedule</Button></Card>}
@@ -402,7 +419,7 @@ function App() {
         <div className="workspace"><Card className="focus" role="region" aria-label="Selected task"><p className="eyebrow">{selected ? 'TASK DETAILS' : 'YOUR NEXT STEP'}</p>{focus ? <>
           <div className="task-meta"><Badge variant="secondary" className="pill">{focus.status === 'completed' ? 'Completed' : focus.ready ? 'Ready when you are' : 'Waiting on prerequisites'}</Badge><span>{focus.estimated_minutes} min estimate</span></div>
           <h2>{focus.title}</h2><p className="deliverable">{focus.deliverable}</p>
-          <TaskNote key={focus.id} taskId={focus.id} disabled={loading || saving || savingPreferences || sessionSaving} onLockChange={setNoteLocked} />
+          <TaskNote key={focus.id + '-' + continuationVersion} taskId={focus.id} disabled={loading || saving || savingPreferences || sessionSaving} onLockChange={setNoteLocked} />
           <div className="instruction"><span className="step-number">01</span><div><h3>Start here</h3><p>{focus.first_action}</p></div></div>
           <div className="instruction"><span className="step-number">02</span><div><h3>You’re done when</h3><p>{focus.completion_check}</p></div></div>
           {!focus.ready && focus.status !== 'completed' && <p className="blocked">Finish first: {focus.prerequisites.filter(id => tasks.find(t => t.id === id)?.status !== 'completed').map(id => tasks.find(t => t.id === id)?.title ?? id).join(', ')}</p>}
