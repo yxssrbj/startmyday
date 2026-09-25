@@ -43,6 +43,11 @@ function localDate() {
   return [today.getFullYear(), String(today.getMonth() + 1).padStart(2, '0'), String(today.getDate()).padStart(2, '0')].join('-');
 }
 
+function localTime() {
+  const now = new Date();
+  return [String(now.getHours()).padStart(2, '0'), String(now.getMinutes()).padStart(2, '0')].join(':');
+}
+
 function formatElapsed(seconds: number) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor(seconds % 3600 / 60);
@@ -84,6 +89,7 @@ function App() {
   const [preferencesError, setPreferencesError] = useState('');
   const [preferencesMessage, setPreferencesMessage] = useState('');
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [savedPreferences, setSavedPreferences] = useState<Preferences | null>(null);
   const initializationId = useRef(0);
   const [noteLocked, setNoteLocked] = useState(false);
   const [notice, setNotice] = useState('');
@@ -101,6 +107,13 @@ function App() {
   const [showFinish, setShowFinish] = useState(false);
   const [finishMinutes, setFinishMinutes] = useState('1');
   const [activityVersion, setActivityVersion] = useState(0);
+  const [showReplan, setShowReplan] = useState(false);
+  const [replanStart, setReplanStart] = useState(localTime);
+  const [remainingRoutine, setRemainingRoutine] = useState(true);
+  const [remainingGym, setRemainingGym] = useState(true);
+  const [remainingBuffer, setRemainingBuffer] = useState(true);
+  const [replanError, setReplanError] = useState('');
+  const [replannedAt, setReplannedAt] = useState('');
   const latestRequest = useRef(0);
   const validMorning = Boolean(morningInput.date && morningInput.morningStart && morningInput.workStart)
     && [morningInput.routineMinutes, morningInput.gymMinutes, morningInput.bufferMinutes]
@@ -134,9 +147,11 @@ function App() {
       setMorningPlan(recommendation);
       setRecommendedId(recommendation.task?.id ?? null);
       setRecommendationLoaded(true);
+      return true;
     }
     catch (e) {
       if (requestId === latestRequest.current) setError(e instanceof Error ? e.message : 'Could not load the plan.');
+      return false;
     }
     finally { if (requestId === latestRequest.current) setLoading(false); }
   }
@@ -152,7 +167,7 @@ function App() {
         routineMinutes: String(preferences.routine_minutes),
         gymMinutes: String(preferences.gym_minutes), bufferMinutes: String(preferences.buffer_minutes),
       };
-      setMorningInput(input); setAppliedMorning(input); setPreferencesLoaded(true);
+      setMorningInput(input); setAppliedMorning(input); setPreferencesLoaded(true); setSavedPreferences(preferences);
       await refresh(input);
     } catch (error) {
       if (id !== initializationId.current) return;
@@ -186,10 +201,11 @@ function App() {
     if (!validMorning || busy) return;
     setSavingPreferences(true); setPreferencesError(''); setPreferencesMessage('');
     try {
-      await request<Preferences>('/api/preferences', {
+      const saved = await request<Preferences>('/api/preferences', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(preferencesFrom(morningInput)),
       });
+      setSavedPreferences(saved);
       setPreferencesMessage('Defaults saved. These times and durations will load next time; the date will be today.');
     } catch (error) {
       setPreferencesError(error instanceof Error ? error.message : 'Could not save your preferences.');
@@ -207,6 +223,35 @@ function App() {
       await refresh();
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not save progress.'); }
     finally { setSaving(false); }
+  }
+
+  function openReplan() {
+    setReplanStart(localTime());
+    setRemainingRoutine(true); setRemainingGym(true); setRemainingBuffer(true);
+    setReplanError(''); setShowReplan(true);
+  }
+
+  async function replanFromNow() {
+    const defaults = savedPreferences ?? preferencesFrom(morningInput);
+    const input: MorningInput = {
+      ...appliedMorning,
+      date: localDate(),
+      morningStart: replanStart,
+      workStart: defaults.work_start,
+      routineMinutes: remainingRoutine ? String(defaults.routine_minutes) : '0',
+      gymMinutes: remainingGym ? String(defaults.gym_minutes) : '0',
+      bufferMinutes: remainingBuffer ? String(defaults.buffer_minutes) : '0',
+    };
+    if (input.morningStart >= input.workStart) {
+      setReplanError('The new start time must be before work starts.');
+      return;
+    }
+    setSelected(null); setReplanError('');
+    const succeeded = await refresh(input);
+    if (succeeded) {
+      setAppliedMorning(input);
+      setReplannedAt(input.morningStart); setShowReplan(false);
+    }
   }
 
   async function startSession(task: Task) {
@@ -256,7 +301,9 @@ function App() {
   const done = tasks.filter(t => t.status === 'completed').length;
   const ready = tasks.filter(t => t.ready);
   const focus = tasks.find(t => t.id === (selected ?? recommendedId));
+  const recommendedTask = tasks.find(task => task.id === recommendedId);
   const activeTask = tasks.find(task => task.id === activeSession?.task_id);
+  const replanDefaults = savedPreferences ?? preferencesFrom(morningInput);
   const busy = loading || saving || savingPreferences || sessionLoading || sessionSaving || noteLocked;
 
   return <div className={'app-shell ' + view + '-view'}>
@@ -276,7 +323,7 @@ function App() {
       {sessionError && <Alert variant="destructive" className="error"><AlertDescription>{sessionError}</AlertDescription></Alert>}
       <p className="sr-only" role="status">{notice}</p>
       {loading && !project ? <p role="status" className="empty">Opening your plan…</p> : project && <>
-        <section className="overview today-only" aria-label="Project progress"><div><strong>{done}<small> / {tasks.length}</small></strong><span>tasks completed</span></div><Progress className="progress-track" aria-label="Tasks completed" value={tasks.length ? done / tasks.length * 100 : 0} /><span className="ready-count">{ready.length} ready to work on</span></section>
+        <section className="overview today-only" aria-label="Project progress"><div><strong>{done}<small> / {tasks.length}</small></strong><span>tasks completed</span></div><Progress className="progress-track" aria-label="Tasks completed" value={tasks.length ? done / tasks.length * 100 : 0} /><span className="ready-count">{replannedAt ? `Replanned at ${replannedAt}` : `${ready.length} ready to work on`}</span></section>
         <form className="morning-form settings-only" onSubmit={event => {
           event.preventDefault();
           if (!validMorning || busy) return;
@@ -298,6 +345,17 @@ function App() {
           <p className="preferences-status" role="status">{preferencesMessage}</p>
         </form>
         <div className="today-only">
+        {!activeSession && recommendedTask && <Card className="morning-launch" role="region" aria-labelledby="morning-launch-title">
+          <div className="launch-copy"><p className="eyebrow">START HERE</p><div className="launch-meta"><span>{recommendedTask.estimated_minutes} min estimate</span><span>{availableMinutes} min available</span></div><h2 id="morning-launch-title">{recommendedTask.title}</h2><p className="launch-action"><strong>Your first action</strong>{recommendedTask.first_action}</p></div>
+          <div className="launch-controls"><Button className="launch-button" disabled={busy} onClick={() => void startSession(recommendedTask)}><Play aria-hidden="true" />{sessionSaving ? 'Starting...' : 'Start focus session'}</Button><Button variant="outline" disabled={busy} onClick={openReplan}>Replan from now</Button></div>
+        </Card>}
+        {!activeSession && recommendationLoaded && !recommendedTask && <Card className="morning-launch launch-unavailable"><div className="launch-copy"><p className="eyebrow">NO SESSION READY</p><h2>{morningPlan?.overbooked_minutes ? 'Your morning needs more room.' : 'No ready task fits this window.'}</h2><p className="launch-action">Adjust the schedule or complete a prerequisite to create a startable session.</p></div><Button variant="outline" onClick={() => setView('settings')}>Adjust schedule</Button></Card>}
+        {showReplan && <Card className="replan-panel" role="dialog" aria-modal="true" aria-labelledby="replan-title">
+          <div className="replan-heading"><div><p className="eyebrow">UPDATE TODAY ONLY</p><h2 id="replan-title">What is still left before work?</h2><p>Your saved defaults will not change.</p></div><Button variant="ghost" onClick={() => setShowReplan(false)} disabled={loading}>Cancel</Button></div>
+          <div className="replan-fields"><div><Label htmlFor="replan-start">Start from</Label><Input id="replan-start" type="time" required value={replanStart} disabled={loading} onChange={event => setReplanStart(event.target.value)} /><small>Work starts at {replanDefaults.work_start}</small></div><fieldset><legend>Activities remaining</legend><label><input type="checkbox" checked={remainingRoutine} disabled={loading} onChange={event => setRemainingRoutine(event.target.checked)} /><span>Routine <small>{replanDefaults.routine_minutes} min</small></span></label><label><input type="checkbox" checked={remainingGym} disabled={loading} onChange={event => setRemainingGym(event.target.checked)} /><span>Gym <small>{replanDefaults.gym_minutes} min</small></span></label><label><input type="checkbox" checked={remainingBuffer} disabled={loading} onChange={event => setRemainingBuffer(event.target.checked)} /><span>Buffer <small>{replanDefaults.buffer_minutes} min</small></span></label></fieldset></div>
+          {replanError && <p className="replan-error" role="alert">{replanError}</p>}
+          <div className="replan-footer"><p>The app will choose another task if the current recommendation no longer fits.</p><Button disabled={loading || !replanStart} onClick={() => void replanFromNow()}>{loading ? 'Replanning...' : 'Build my new plan'}</Button></div>
+        </Card>}
         {morningPlan && <section className={'budget-result ' + (morningPlan.overbooked_minutes > 0 ? 'overbooked' : '')} role="status" aria-label="Morning budget">
           {morningPlan.overbooked_minutes > 0 ? <><strong>Overbooked by {morningPlan.overbooked_minutes} minutes</strong><p>Your activities exceed the time before work. Free up at least {morningPlan.overbooked_minutes} minutes before adding programming.</p></> : <><strong>{availableMinutes} minutes for programming</strong><p>{availableMinutes === 0 ? 'Your routine, gym, and buffer fill the whole window. Adjust them to make room for programming.' : 'After your routine, gym, and before-work buffer.'}</p></>}
         </section>}
