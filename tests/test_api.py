@@ -55,16 +55,17 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.patch('/api/tasks/first/progress', json={'status': 'invalid'}).status_code, 422)
         self.assertEqual(database.get_progress('first'), 'pending')
 
-    def test_invalid_plan_is_reported(self):
+    def test_json_changes_do_not_replace_imported_project(self):
         for plan in [None, {'tasks': [123]}, {'tasks': []}]:
             self.write_plan(plan)
-            expected = 200 if plan == {'tasks': []} else 422
-            self.assertEqual(self.client.get('/api/project').status_code, expected)
+            response = self.client.get('/api/project')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual([task['id'] for task in response.json()['tasks']], ['first', 'second'])
         bad = copy.deepcopy(self.plan)
         del bad['tasks'][0]['id']
         self.write_plan(bad)
-        self.assertEqual(self.client.get('/api/project').status_code, 422)
+        self.assertEqual(self.client.get('/api/project').status_code, 200)
         bad = copy.deepcopy(self.plan)
         bad['tasks'][0]['prerequisites'] = ['missing']
         self.write_plan(bad)
-        self.assertEqual(self.client.get('/api/project').status_code, 422)
+        self.assertEqual(self.client.get('/api/project').status_code, 200)

@@ -8,6 +8,8 @@ Read the current code and README.md before making claims or changes. MVP.md desc
 
 ## Collaboration rules
 
+- When asked to elaborate on something, or the user's pushes back about an idea, give a clear explanation with no filler words and unnessecary text to keep things brief but understandable
+
 - When the user asks about the current or next feature/deliverable, explain the goal first: what problem it solves, what the user will be able to do, and a concrete example of the flow. Explain how it connects to existing features and why each proposed piece is needed before listing implementation steps. Do not just prescribe function names, SQL tables, or code to copy. Give enough conceptual understanding and clear expected behavior for the user to design and build it themselves; provide implementation details afterward as support.
 
 - The user is learning Python/backend development. By default, let them implement backend learning features; explain concepts and review their work. When they explicitly delegate a feature, implement the whole feature. Saved morning preferences were explicitly delegated.

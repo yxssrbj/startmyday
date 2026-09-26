@@ -11,7 +11,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MorningSchedule, type ScheduleBlock } from '@/components/morning-schedule';
 import { TaskNote } from '@/components/task-note';
 import { ActivityHeatmap } from '@/components/activity-heatmap';
-import { Mountain, ArrowUpRight, Check, Sparkles, Play, Square, Timer, Sun, SlidersHorizontal } from 'lucide-react';
+import { ProjectWorkspace } from '@/components/project-workspace';
+import { Mountain, ArrowUpRight, Check, Sparkles, Play, Square, Timer, Sun, SlidersHorizontal, FolderKanban } from 'lucide-react';
 import './style.css';
 
 type Status = 'pending' | 'in_progress' | 'completed';
@@ -83,7 +84,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 function App() {
-  const [view, setView] = useState<'today' | 'settings'>('today');
+  const [view, setView] = useState<'today' | 'settings' | 'projects'>('today');
   const [project, setProject] = useState<Project | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -349,12 +350,14 @@ function App() {
       <nav className="app-nav" aria-label="Main navigation">
         <Button variant="ghost" className={view === 'today' ? 'active' : ''} aria-current={view === 'today' ? 'page' : undefined} onClick={() => setView('today')}><Sun aria-hidden="true" /><span>Today</span></Button>
         <Button variant="ghost" className={view === 'settings' ? 'active' : ''} aria-current={view === 'settings' ? 'page' : undefined} disabled={noteLocked} title={noteLocked ? 'Save or discard your note before leaving this task.' : undefined} onClick={() => setView('settings')}><SlidersHorizontal aria-hidden="true" /><span>Schedule setup</span></Button>
+        <Button variant="ghost" className={view === 'projects' ? 'active' : ''} aria-current={view === 'projects' ? 'page' : undefined} disabled={noteLocked} title={noteLocked ? 'Save or discard your note before leaving this task.' : undefined} onClick={() => setView('projects')}><FolderKanban aria-hidden="true" /><span>Projects</span></Button>
       </nav>
       <p className="sidebar-note">Your plan opens here every morning. Change durations only when your routine changes.</p>
     </aside>
     <div className="app-content">
     <main>
-      <section className="intro"><div><p className="eyebrow">{view === 'today' ? 'GOOD MORNING' : 'SCHEDULE SETUP'}</p><h1>{view === 'today' ? <>Your day is <em>ready.</em></> : <>Shape your <em>default morning.</em></>}</h1><p className="subtitle">{view === 'today' ? 'No setup required. Start the next useful piece.' : 'These values generate the schedule shown on Today.'}</p></div>{view === 'today' ? <div className="date-card"><span>YOUR PROJECT</span><strong>{project?.name || 'Morning Plan'}</strong><p>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</p></div> : <Button variant="outline" onClick={() => setView('today')}>Back to today</Button>}</section>
+      <section className="intro"><div><p className="eyebrow">{view === 'today' ? 'GOOD MORNING' : view === 'settings' ? 'SCHEDULE SETUP' : 'PROJECT WORKSPACE'}</p><h1>{view === 'today' ? <>Your day is <em>ready.</em></> : view === 'settings' ? <>Shape your <em>default morning.</em></> : <>Turn goals into <em>clear work.</em></>}</h1><p className="subtitle">{view === 'today' ? 'No setup required. Start the next useful piece.' : view === 'settings' ? 'These values generate the schedule shown on Today.' : 'Create sequenced deliverables and choose which project drives Today.'}</p></div>{view === 'today' ? <div className="date-card"><span>YOUR PROJECT</span><strong>{project?.name || 'Morning Plan'}</strong><p>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</p></div> : view === 'settings' ? <Button variant="outline" onClick={() => setView('today')}>Back to today</Button> : null}</section>
+      {view === 'projects' && <ProjectWorkspace onActiveProjectChange={() => { setSelected(null); void refresh(); }} />}
       {error && <Alert variant="destructive" className="error"><AlertDescription>{error}</AlertDescription> <Button onClick={() => void refresh()} disabled={busy}>Try again</Button></Alert>}
       {preferencesError && <Alert variant="destructive"><AlertDescription>{preferencesError}</AlertDescription>{!preferencesLoaded && <Button variant="outline" onClick={() => void initializePreferences()} disabled={loading}>Retry loading defaults</Button>}</Alert>}
       {sessionError && <Alert variant="destructive" className="error"><AlertDescription>{sessionError}</AlertDescription></Alert>}

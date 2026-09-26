@@ -1,41 +1,58 @@
 # Morning Plan
 
-A local programming dashboard built with React + TypeScript + Vite, backed by Python + FastAPI and SQLite.
+A local morning planner that chooses a clear programming task, fits it around your routine, gym, and work, and remembers where to continue tomorrow. It uses React, TypeScript, Vite, FastAPI, and SQLite.
 
-The frontend uses shadcn/ui components (Button, Card, Input, Label, Badge, Progress, and Alert), Tailwind CSS v4, and Lucide icons. Theme tokens in frontend/src/style.css define the cool slate, white, and blue palette. Components live in frontend/src/components/ui; frontend/components.json configures the shadcn CLI.
+## Requirements
 
-## Run
+- Python 3.11 or newer
+- Node.js 20.19+ or 22.12+
+- npm
 
-From the project root, activate your environment and start the API:
+The commands below use PowerShell on Windows.
+
+## First-time setup
+
+Run these commands from the project root:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
+
+cd frontend
+npm.cmd ci
+cd ..
+```
+
+The development requirements are only needed for running the backend tests.
+
+## Run locally
+
+The backend and frontend run in separate terminals.
+
+In the first terminal, from the project root:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python -m uvicorn api:app --app-dir src --reload
 ```
 
-In a second terminal:
+In a second terminal, from the project root:
 
 ```powershell
 cd frontend
 npm.cmd run dev
 ```
 
-Open http://127.0.0.1:5173. Keep both terminals running; Ctrl+C stops each server.
-The frontend forwards /api requests to FastAPI on port 8000.
-Interactive API documentation is at http://127.0.0.1:8000/docs.
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173) in your browser.
 
-## First-time setup
+- Frontend: `http://127.0.0.1:5173`
+- Backend: `http://127.0.0.1:8000`
+- Interactive API documentation: `http://127.0.0.1:8000/docs`
+- Stop either server with `Ctrl+C` in its terminal.
 
-Dependencies are already installed on this machine. For a fresh checkout:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-cd frontend
-npm.cmd ci
-```
-
-Use Node 20.19+ or 22.12+ (this build was verified with Node 24).
+SQLite data is stored locally in `progress.db`, which is created automatically in the project root. The frontend forwards `/api` requests to the backend on port 8000.
 
 ## What works
 
@@ -45,6 +62,11 @@ Use Node 20.19+ or 22.12+ (this build was verified with Node 24).
 - Save status to progress.db and recalculate readiness.
 - Save a per-task “Continue here tomorrow” note, view its last-saved time, or clear it. Notes load whenever a task is opened.
 - Save or discard note drafts before switching tasks, updating progress, or recalculating the plan; failed saves keep the draft available for retry.
+- Generate and replan a morning schedule using saved routine, gym, buffer, and work times.
+- Start and finish timed focus sessions.
+- Record a session summary, evidence, and the exact next action.
+- Carry the next action into the next Morning Launch and continuation note.
+- Review focused minutes in a 12-week activity heatmap.
 - Show plan validation and API errors.
 
 Enter a date, morning/work start times, and routine, gym, and buffer durations, then choose **Plan my morning**.
@@ -54,17 +76,15 @@ Zero durations are allowed. A zero budget has no task; a negative budget display
 Progress changes and Refresh recalculate using the last submitted inputs. Form edits apply only on submission; refresh of the browser loads your saved defaults with today's date.
 You can still inspect any task in the list and return to the recommendation.
 The morning planner displays the backend's ordered activity blocks with start/end times and durations. Zero-duration activities are omitted by the backend, and overbooked plans show a shortage without a schedule. The programming block covers the full available window, even if the selected task is shorter or no task fits. Generated learning plans remain a future step.
-Plans are edited in JSON; use Refresh to reload them. Progress belongs to task IDs:
-keep IDs stable and unique. This version handles one local project.
-Reopening a prerequisite blocks unfinished dependents; previously completed work keeps its status.
-Validation checks missing references and self-dependencies, but not multi-task dependency cycles yet.
+Use the **Projects** workspace to create, edit, activate, reorder, and delete projects and tasks. The active project's tasks drive Today. On the first startup only, an empty database imports `project_plan.json`; after that SQLite is the source of truth. Progress belongs to task IDs, so IDs remain stable across task edits.
+Reopening a prerequisite blocks unfinished dependents; previously completed work keeps its status. Project and task validation rejects unknown prerequisites, self-dependencies, and dependency cycles.
 
 ## How your code connects
 
 - src/main.py: your task/project validation and readiness functions.
 - src/database.py: SQLite reads and writes, with a short-lived connection per operation.
-- src/api.py: GET /api/project and PATCH /api/tasks/{id}/progress.
-- frontend/src/main.tsx: typed React interface, API calls, and progress updates.
+- src/api.py: project/task CRUD, progress, preferences, sessions, activity, and morning-plan HTTP routes.
+- frontend/src/main.tsx and frontend/src/components/: typed React dashboard and Project Workspace.
 - frontend/src/style.css: responsive layout and visual styling.
 
 main.py only runs the terminal display when executed directly; importing it from FastAPI does not run the CLI.
