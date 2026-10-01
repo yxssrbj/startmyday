@@ -5,6 +5,8 @@ from typing import Literal
 from datetime import date, datetime
 from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from openai import OpenAI
+
 
 from fastapi import FastAPI, HTTPException, Query, status
 from database import (
@@ -14,7 +16,7 @@ from database import (
     get_project_task_ids, get_task_note, get_task_project_id, get_work_session,
     import_project, init_db, list_projects, projects_exist, reorder_tasks,
     save_preferences, save_progress, save_task_note, set_active_project,
-    start_work_session, update_project, update_task,
+    start_work_session, update_project, update_task, read_concepts
 )
 from main import is_task_ready, validate_project
 
@@ -23,6 +25,20 @@ from main import select_next_task, plan_morning
 PLAN_PATH = Path(__file__).resolve().parent.parent / 'project_plan.json'
 LEGACY_PROJECT_ID = 'project-001'
 
+
+
+
+class ProjectRequest(BaseModel):
+    name: str
+    goal: str
+
+    @field_validator('goal')
+    @classmethod
+    def goal_must_not_be_blank(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError('Concept name must not be blank')
+        return value
 class MorningPlanRequest(BaseModel):
     morning_start: datetime
     work_start: datetime
@@ -40,7 +56,18 @@ class FinishSessionRequest(BaseModel):
     summary: str
     evidence: str
     next_action: str
+    concepts: list[str] = Field(default_factory=list)
 
+    @field_validator('concepts')
+    @classmethod
+    def concept_must_not_be_blank(cls,values: list[str]) -> list[str]:
+        cleaned = []
+        for value in values:
+            value = value.strip()
+            if not value:
+                raise ValueError('Concept name must not be blank')
+            cleaned.append(value)
+        return cleaned
 
 class ProjectCreate(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -440,11 +467,13 @@ def finish_session(session_id: int, request: FinishSessionRequest):
         raise HTTPException(404, "Session doesn't exist")
     if session['end_time'] is not None:
         raise HTTPException(409, "Session is already finished")
+    # pass concept/concepts to finish session
     return finish_work_session(session_id,
                                 request.minutes,
                                   request.summary.strip(),
                                 request.evidence.strip(),
-                                  request.next_action.strip())    
+                                  request.next_action.strip(),
+                                  request.concepts)    
 
 @app.get('/api/activity')
 def read_sessions(start: date, end: date):
@@ -452,3 +481,40 @@ def read_sessions(start: date, end: date):
             raise HTTPException(status_code=422, detail='Start date cannot be after end date')
     sessions = get_all_sessions(start.isoformat(), end.isoformat())
     return sessions
+
+
+@app.get('/api/concepts')
+def get_concepts():
+    return read_concepts()
+## read endpoint that return list of concepts as nodes and connects pairs used in the same task
+
+@app.get('/api/generate-project')
+def generate_project_plan(request: ProjectRequest):
+     client = OpenAI()
+     response = client.responses.create(
+         model='gpt-6-astra',
+         reasoning={'effort':'high'},
+         instructions=""" You create draft software project plans for Morning Plan.
+
+Turn the user's goal into one small, usable MVP. Choose a stack that fits their
+experience and constraints, and explain the choice in plain language.
+
+Create 6–12 tasks in build order. Each task must have:
+- a specific title and concrete deliverable
+- a first action the user can start immediately
+- an observable completion check
+- a positive time estimate, usually 30–120 minutes
+- prerequisites referencing only earlier tasks
+
+Make each task small enough for one focus session. Include an early working
+backend-to-UI slice so the user can see progress. Avoid vague tasks such as
+"learn Python" or unnecessary infrastructure.
+
+This is a draft, not completed work. If details are missing, make modest
+assumptions and list them. Do not save anything.""",
+        input=f'{"goal": request.name, "name": request.goal}'
+
+     )
+
+     ## add openai key
+     ## do something with the data returned and format it into tasks and so on

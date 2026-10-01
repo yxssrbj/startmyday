@@ -67,6 +67,7 @@ SQLite data is stored locally in `progress.db`, which is created automatically i
 - Record a session summary, evidence, and the exact next action.
 - Carry the next action into the next Morning Launch and continuation note.
 - Review focused minutes in a 12-week activity heatmap.
+- Tag finished focus sessions with concepts and explore their shared-task connections in the Knowledge map.
 - Show plan validation and API errors.
 
 Enter a date, morning/work start times, and routine, gym, and buffer durations, then choose **Plan my morning**.

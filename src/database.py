@@ -2,7 +2,7 @@ import sqlite3
 import os
 from contextlib import closing
 from pathlib import Path
-
+from itertools import combinations
 
 DB_PATH = Path(os.environ.get("MORNING_DB_PATH", Path(__file__).resolve().parent.parent / "progress.db"))
 
@@ -94,6 +94,20 @@ def init_db():
                         evidence TEXT,
                         next_action TEXT
                 )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS concepts(
+            concept_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            name_key TEXT NOT NULL  UNIQUE, 
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            
+        )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS session_concepts(
+            session_id INTEGER NOT NULL,
+            concept_id INTEGER NOT NULL,
+            PRIMARY KEY (session_id, concept_id),
+            FOREIGN KEY (session_id) REFERENCES work_sessions(session_id) ON DELETE CASCADE,
+            FOREIGN KEY (concept_id) REFERENCES concepts(concept_id) ON DELETE CASCADE
+        )""")
 
         existing_session_columns = {
             row[1] for row in con.execute("PRAGMA table_info(work_sessions)")
@@ -221,7 +235,7 @@ def get_work_session(session_id):
                   "evidence":row[6],
                   "next_action":row[7]}
 
-def finish_work_session(session_id, actual_minutes, summary, evidence, next_action):
+def finish_work_session(session_id, actual_minutes, summary, evidence, next_action, concepts):
     with closing(sqlite3.connect(DB_PATH)) as con:
         row = con.execute("SELECT task_id from work_sessions WHERE session_id = ?", (session_id,)).fetchone()
         con.execute("""UPDATE work_sessions
@@ -233,6 +247,9 @@ def finish_work_session(session_id, actual_minutes, summary, evidence, next_acti
           ON CONFLICT(task_id) DO UPDATE SET
         note = excluded.note,
         updated_at = CURRENT_TIMESTAMP""", (row[0], next_action))
+        if concepts is not None:
+            for concept in concepts:
+                add_concept(concept, session_id, con)
         con.commit()
         return get_work_session(session_id)
 
@@ -627,3 +644,61 @@ def delete_task(task_id):
             con.rollback()
             raise
     return {"deleted_task_id": task_id, "project_id": project_id}
+
+
+def link_concept_to_session(session_id, concept_id, con = None):
+    con.execute("INSERT INTO session_concepts(session_id, concept_id) VALUES (?,?)", (session_id, concept_id))
+
+def add_concept(concept_name, session_id, con = None):
+    name_key = concept_name.strip().casefold()
+    # with closing(sqlite3.connect(DB_PATH)) as con:
+    row = con.execute("SELECT concept_id FROM concepts WHERE name_key = ?", (name_key,)).fetchone()
+    if row is not  None:
+        link_concept_to_session(session_id, row[0], con)
+        return row[0]
+    else:
+        concept_id = con.execute("INSERT INTO concepts(name, name_key) VALUES (?,?)", (concept_name, name_key)).lastrowid
+        link_concept_to_session(session_id, concept_id, con)
+        return concept_id
+
+
+def read_concepts():
+    with closing(sqlite3.connect(DB_PATH)) as con:
+        nodes = []
+        concepts_rows = con.execute("SELECT concept_id, name, name_key, created_at FROM concepts").fetchall()
+        for concept in concepts_rows:
+            nodes.append({"id":concept[0],
+                          "name":concept[1],
+                          "name_key":concept[2],
+                          "created_at":concept[3]
+                          })
+        ## need to fetch concept names by concept_id and return them as nodes
+        pairs = []
+        pair_rows = con.execute("""SELECT DISTINCT ws.task_id, sc.concept_id 
+        FROM session_concepts AS sc 
+                JOIN work_sessions AS ws ON sc.session_id = ws.session_id
+                ORDER BY ws.task_id, sc.concept_id
+        """).fetchall() 
+    # for pair in pair_rows:
+    #     pairs.append((pair[0], pair[1]))
+
+    concepts_per_task = {}
+    for task_id, concept_id in pair_rows:
+        concepts_per_task.setdefault(task_id, set()).add(concept_id) ## task_id is fetched from the tuple returned by db, then task_id used as the key to access the list of concept_ids and append the concept_id
+
+    shared_counts = {}
+    for concept_ids in concepts_per_task.values():
+        ## turn concept_ids into combinations of 2
+        for left, right in combinations(sorted(concept_ids), 2):
+            connection = (left, right)
+            ## .get() returns the existing count or 0 if its not there, and we add +1 to the count
+            shared_counts[connection] = shared_counts.get(connection, 0) + 1
+
+    edges = [{"source":left, "target":right, "shared_task_count":count} for (left, right), count in shared_counts.items()]
+
+    return {"nodes":nodes,"edges":edges}
+    
+
+    
+
+

@@ -12,7 +12,8 @@ import { MorningSchedule, type ScheduleBlock } from '@/components/morning-schedu
 import { TaskNote } from '@/components/task-note';
 import { ActivityHeatmap } from '@/components/activity-heatmap';
 import { ProjectWorkspace } from '@/components/project-workspace';
-import { Mountain, ArrowUpRight, Check, Sparkles, Play, Square, Timer, Sun, SlidersHorizontal, FolderKanban } from 'lucide-react';
+import { KnowledgeGraph } from '@/components/knowledge-graph';
+import { Mountain, ArrowUpRight, Check, Sparkles, Play, Square, Timer, Sun, SlidersHorizontal, FolderKanban, Network } from 'lucide-react';
 import './style.css';
 
 type Status = 'pending' | 'in_progress' | 'completed';
@@ -84,7 +85,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 function App() {
-  const [view, setView] = useState<'today' | 'settings' | 'projects'>('today');
+  const [view, setView] = useState<'today' | 'settings' | 'projects' | 'knowledge'>('today');
   const [project, setProject] = useState<Project | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -113,6 +114,7 @@ function App() {
   const [finishSummary, setFinishSummary] = useState('');
   const [finishEvidence, setFinishEvidence] = useState('');
   const [finishNextAction, setFinishNextAction] = useState('');
+  const [finishConcepts, setFinishConcepts] = useState('');
   const [continuationNote, setContinuationNote] = useState('');
   const [continuationVersion, setContinuationVersion] = useState(0);
   const [activityVersion, setActivityVersion] = useState(0);
@@ -293,7 +295,7 @@ function App() {
 
   function openFinishSession() {
     setFinishMinutes(String(Math.max(1, Math.round(elapsedSeconds / 60))));
-    setFinishSummary(''); setFinishEvidence(''); setFinishNextAction('');
+    setFinishSummary(''); setFinishEvidence(''); setFinishNextAction(''); setFinishConcepts('');
     setShowFinish(true); setSessionError('');
   }
 
@@ -320,12 +322,13 @@ function App() {
           summary: finishSummary.trim(),
           evidence: finishEvidence.trim(),
           next_action: finishNextAction.trim(),
+          concepts: [...new Map(finishConcepts.split(',').map(name => name.trim()).filter(Boolean).map(name => [name.toLocaleLowerCase(), name])).values()],
         }),
       });
       const taskTitle = project?.tasks.find(task => task.id === activeSession.task_id)?.title ?? activeSession.task_id;
       if (finished.task_id === recommendedId) setContinuationNote(finished.next_action ?? '');
       setActiveSession(null); setShowFinish(false);
-      setFinishSummary(''); setFinishEvidence(''); setFinishNextAction('');
+      setFinishSummary(''); setFinishEvidence(''); setFinishNextAction(''); setFinishConcepts('');
       setContinuationVersion(version => version + 1);
       setActivityVersion(version => version + 1);
       setNotice('Saved ' + minutes + ' focused minutes for ' + taskTitle + '.');
@@ -351,13 +354,19 @@ function App() {
         <Button variant="ghost" className={view === 'today' ? 'active' : ''} aria-current={view === 'today' ? 'page' : undefined} onClick={() => setView('today')}><Sun aria-hidden="true" /><span>Today</span></Button>
         <Button variant="ghost" className={view === 'settings' ? 'active' : ''} aria-current={view === 'settings' ? 'page' : undefined} disabled={noteLocked} title={noteLocked ? 'Save or discard your note before leaving this task.' : undefined} onClick={() => setView('settings')}><SlidersHorizontal aria-hidden="true" /><span>Schedule setup</span></Button>
         <Button variant="ghost" className={view === 'projects' ? 'active' : ''} aria-current={view === 'projects' ? 'page' : undefined} disabled={noteLocked} title={noteLocked ? 'Save or discard your note before leaving this task.' : undefined} onClick={() => setView('projects')}><FolderKanban aria-hidden="true" /><span>Projects</span></Button>
+        <Button variant="ghost" className={view === 'knowledge' ? 'active' : ''} aria-current={view === 'knowledge' ? 'page' : undefined} disabled={noteLocked} title={noteLocked ? 'Save or discard your note before leaving this task.' : undefined} onClick={() => setView('knowledge')}><Network aria-hidden="true" /><span>Knowledge map</span></Button>
       </nav>
       <p className="sidebar-note">Your plan opens here every morning. Change durations only when your routine changes.</p>
     </aside>
     <div className="app-content">
     <main>
-      <section className="intro"><div><p className="eyebrow">{view === 'today' ? 'GOOD MORNING' : view === 'settings' ? 'SCHEDULE SETUP' : 'PROJECT WORKSPACE'}</p><h1>{view === 'today' ? <>Your day is <em>ready.</em></> : view === 'settings' ? <>Shape your <em>default morning.</em></> : <>Turn goals into <em>clear work.</em></>}</h1><p className="subtitle">{view === 'today' ? 'No setup required. Start the next useful piece.' : view === 'settings' ? 'These values generate the schedule shown on Today.' : 'Create sequenced deliverables and choose which project drives Today.'}</p></div>{view === 'today' ? <div className="date-card"><span>YOUR PROJECT</span><strong>{project?.name || 'Morning Plan'}</strong><p>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</p></div> : view === 'settings' ? <Button variant="outline" onClick={() => setView('today')}>Back to today</Button> : null}</section>
+      <section className="intro"><div>
+        <p className="eyebrow">{view === 'today' ? 'GOOD MORNING' : view === 'settings' ? 'SCHEDULE SETUP' : view === 'projects' ? 'PROJECT WORKSPACE' : 'KNOWLEDGE MAP'}</p>
+        <h1>{view === 'today' ? <>Your day is <em>ready.</em></> : view === 'settings' ? <>Shape your <em>default morning.</em></> : view === 'projects' ? <>Turn goals into <em>clear work.</em></> : <>See how ideas <em>connect.</em></>}</h1>
+        <p className="subtitle">{view === 'today' ? 'No setup required. Start the next useful piece.' : view === 'settings' ? 'These values generate the schedule shown on Today.' : view === 'projects' ? 'Create sequenced deliverables and choose which project drives Today.' : 'A map built from the concepts you record after focus sessions.'}</p>
+      </div>{view === 'today' ? <div className="date-card"><span>YOUR PROJECT</span><strong>{project?.name || 'Morning Plan'}</strong><p>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</p></div> : view === 'settings' ? <Button variant="outline" onClick={() => setView('today')}>Back to today</Button> : null}</section>
       {view === 'projects' && <ProjectWorkspace onActiveProjectChange={() => { setSelected(null); void refresh(); }} />}
+      {view === 'knowledge' && <KnowledgeGraph />}
       {error && <Alert variant="destructive" className="error"><AlertDescription>{error}</AlertDescription> <Button onClick={() => void refresh()} disabled={busy}>Try again</Button></Alert>}
       {preferencesError && <Alert variant="destructive"><AlertDescription>{preferencesError}</AlertDescription>{!preferencesLoaded && <Button variant="outline" onClick={() => void initializePreferences()} disabled={loading}>Retry loading defaults</Button>}</Alert>}
       {sessionError && <Alert variant="destructive" className="error"><AlertDescription>{sessionError}</AlertDescription></Alert>}
@@ -414,6 +423,7 @@ function App() {
               <div><Label htmlFor="session-summary">What did you accomplish?</Label><Textarea id="session-summary" required value={finishSummary} disabled={sessionSaving} placeholder="Added validation for missing prerequisite IDs." onChange={event => setFinishSummary(event.target.value)} /></div>
               <div><Label htmlFor="session-evidence">What proves it works? <span>Optional</span></Label><Textarea id="session-evidence" value={finishEvidence} disabled={sessionSaving} placeholder="Three validation tests pass." onChange={event => setFinishEvidence(event.target.value)} /></div>
               <div><Label htmlFor="session-next-action">What is the exact next action?</Label><Textarea id="session-next-action" required value={finishNextAction} disabled={sessionSaving} placeholder="Add the circular prerequisite test in tests/test_validation.py." onChange={event => setFinishNextAction(event.target.value)} /></div>
+              <div className="finish-concepts"><Label htmlFor="session-concepts">Concepts you used <span>Optional</span></Label><Input id="session-concepts" value={finishConcepts} disabled={sessionSaving} placeholder="FastAPI, SQLite, validation" onChange={event => setFinishConcepts(event.target.value)} /><p>Separate concepts with commas. These build your knowledge map.</p></div>
             </div>
             <div className="finish-footer"><p>Saving this closes the timer and adds the minutes to your activity.</p><div className="finish-actions"><Button type="button" variant="ghost" onClick={() => setShowFinish(false)} disabled={sessionSaving}>Keep working</Button><Button type="submit" disabled={sessionSaving}>{sessionSaving ? 'Saving...' : 'Save and finish'}</Button></div></div>
           </form>}
