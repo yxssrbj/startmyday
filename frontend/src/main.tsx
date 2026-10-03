@@ -97,6 +97,7 @@ function App() {
   const [savedPreferences, setSavedPreferences] = useState<Preferences | null>(null);
   const initializationId = useRef(0);
   const [noteLocked, setNoteLocked] = useState(false);
+  const [draftPending, setDraftPending] = useState(false);
   const [notice, setNotice] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [morningInput, setMorningInput] = useState<MorningInput>(initialMorning);
@@ -351,10 +352,10 @@ function App() {
     <aside className="app-sidebar">
       <a className="brand" href="/" aria-label="Morning Plan home"><span className="sun"><Mountain aria-hidden="true" /></span><span className="brand-name">morning plan</span><span className="brand-dot">.</span></a>
       <nav className="app-nav" aria-label="Main navigation">
-        <Button variant="ghost" className={view === 'today' ? 'active' : ''} aria-current={view === 'today' ? 'page' : undefined} onClick={() => setView('today')}><Sun aria-hidden="true" /><span>Today</span></Button>
-        <Button variant="ghost" className={view === 'settings' ? 'active' : ''} aria-current={view === 'settings' ? 'page' : undefined} disabled={noteLocked} title={noteLocked ? 'Save or discard your note before leaving this task.' : undefined} onClick={() => setView('settings')}><SlidersHorizontal aria-hidden="true" /><span>Schedule setup</span></Button>
+        <Button variant="ghost" className={view === 'today' ? 'active' : ''} aria-current={view === 'today' ? 'page' : undefined} disabled={draftPending} title={draftPending ? 'Save or discard your plan draft before leaving Projects.' : undefined} onClick={() => setView('today')}><Sun aria-hidden="true" /><span>Today</span></Button>
+        <Button variant="ghost" className={view === 'settings' ? 'active' : ''} aria-current={view === 'settings' ? 'page' : undefined} disabled={noteLocked || draftPending} title={draftPending ? 'Save or discard your plan draft before leaving Projects.' : noteLocked ? 'Save or discard your note before leaving this task.' : undefined} onClick={() => setView('settings')}><SlidersHorizontal aria-hidden="true" /><span>Schedule setup</span></Button>
         <Button variant="ghost" className={view === 'projects' ? 'active' : ''} aria-current={view === 'projects' ? 'page' : undefined} disabled={noteLocked} title={noteLocked ? 'Save or discard your note before leaving this task.' : undefined} onClick={() => setView('projects')}><FolderKanban aria-hidden="true" /><span>Projects</span></Button>
-        <Button variant="ghost" className={view === 'knowledge' ? 'active' : ''} aria-current={view === 'knowledge' ? 'page' : undefined} disabled={noteLocked} title={noteLocked ? 'Save or discard your note before leaving this task.' : undefined} onClick={() => setView('knowledge')}><Network aria-hidden="true" /><span>Knowledge map</span></Button>
+        <Button variant="ghost" className={view === 'knowledge' ? 'active' : ''} aria-current={view === 'knowledge' ? 'page' : undefined} disabled={noteLocked || draftPending} title={draftPending ? 'Save or discard your plan draft before leaving Projects.' : noteLocked ? 'Save or discard your note before leaving this task.' : undefined} onClick={() => setView('knowledge')}><Network aria-hidden="true" /><span>Knowledge map</span></Button>
       </nav>
       <p className="sidebar-note">Your plan opens here every morning. Change durations only when your routine changes.</p>
     </aside>
@@ -365,7 +366,7 @@ function App() {
         <h1>{view === 'today' ? <>Your day is <em>ready.</em></> : view === 'settings' ? <>Shape your <em>default morning.</em></> : view === 'projects' ? <>Turn goals into <em>clear work.</em></> : <>See how ideas <em>connect.</em></>}</h1>
         <p className="subtitle">{view === 'today' ? 'No setup required. Start the next useful piece.' : view === 'settings' ? 'These values generate the schedule shown on Today.' : view === 'projects' ? 'Create sequenced deliverables and choose which project drives Today.' : 'A map built from the concepts you record after focus sessions.'}</p>
       </div>{view === 'today' ? <div className="date-card"><span>YOUR PROJECT</span><strong>{project?.name || 'Morning Plan'}</strong><p>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</p></div> : view === 'settings' ? <Button variant="outline" onClick={() => setView('today')}>Back to today</Button> : null}</section>
-      {view === 'projects' && <ProjectWorkspace onActiveProjectChange={() => { setSelected(null); void refresh(); }} />}
+      {view === 'projects' && <ProjectWorkspace onActiveProjectChange={() => { setSelected(null); void refresh(); }} onDraftPendingChange={setDraftPending} />}
       {view === 'knowledge' && <KnowledgeGraph />}
       {error && <Alert variant="destructive" className="error"><AlertDescription>{error}</AlertDescription> <Button onClick={() => void refresh()} disabled={busy}>Try again</Button></Alert>}
       {preferencesError && <Alert variant="destructive"><AlertDescription>{preferencesError}</AlertDescription>{!preferencesLoaded && <Button variant="outline" onClick={() => void initializePreferences()} disabled={loading}>Retry loading defaults</Button>}</Alert>}

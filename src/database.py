@@ -391,13 +391,40 @@ def list_projects():
 
 
 def create_project(project_id, name, goal):
+    return create_project_with_tasks(project_id, name, goal, [])
+
+
+def create_project_with_tasks(project_id, name, goal, tasks):
+    """Create a reviewed project and all of its tasks in one transaction."""
     with closing(sqlite3.connect(DB_PATH)) as con:
-        make_active = not bool(con.execute("SELECT EXISTS(SELECT 1 FROM projects)").fetchone()[0])
-        con.execute(
-            "INSERT INTO projects(project_id, name, goal, is_active) VALUES (?, ?, ?, ?)",
-            (project_id, name, goal, int(make_active)),
-        )
-        con.commit()
+        con.execute("PRAGMA foreign_keys = ON")
+        try:
+            con.execute("BEGIN IMMEDIATE")
+            make_active = not bool(con.execute("SELECT EXISTS(SELECT 1 FROM projects)").fetchone()[0])
+            con.execute(
+                "INSERT INTO projects(project_id, name, goal, is_active) VALUES (?, ?, ?, ?)",
+                (project_id, name, goal, int(make_active)),
+            )
+            for position, task in enumerate(tasks):
+                con.execute(
+                    """INSERT INTO tasks (
+                        task_id, project_id, title, deliverable, first_action,
+                        completion_check, estimated_minutes, position
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (task['id'], project_id, task['title'], task['deliverable'],
+                     task['first_action'], task['completion_check'],
+                     task['estimated_minutes'], position),
+                )
+            for task in tasks:
+                for prerequisite_id in task['prerequisites']:
+                    con.execute(
+                        "INSERT INTO task_prerequisites(task_id, prerequisite_id) VALUES (?, ?)",
+                        (task['id'], prerequisite_id),
+                    )
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
     return get_project(project_id)
 
 
@@ -700,5 +727,3 @@ def read_concepts():
     
 
     
-
-

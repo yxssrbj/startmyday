@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { GeneratedPlanReview, type GeneratedPlan } from '@/components/generated-plan-review';
 
 type ProjectSummary = {
   project_id: string; name: string; goal: string; is_active: boolean;
@@ -41,7 +42,7 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   return data;
 }
 
-export function ProjectWorkspace({ onActiveProjectChange }: { onActiveProjectChange: () => void }) {
+export function ProjectWorkspace({ onActiveProjectChange, onDraftPendingChange }: { onActiveProjectChange: () => void; onDraftPendingChange: (pending: boolean) => void }) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [project, setProject] = useState<ProjectDetail | null>(null);
@@ -51,6 +52,10 @@ export function ProjectWorkspace({ onActiveProjectChange }: { onActiveProjectCha
   const [notice, setNotice] = useState('');
   const [creatingProject, setCreatingProject] = useState(false);
   const [newProject, setNewProject] = useState({ name: '', goal: '' });
+  const [planInput, setPlanInput] = useState({ name: '', goal: '' });
+  const [planDraft, setPlanDraft] = useState<GeneratedPlan | null>(null);
+  const [planError, setPlanError] = useState('');
+  const [generatingPlan, setGeneratingPlan] = useState(false);
   const [projectDraft, setProjectDraft] = useState({ name: '', goal: '' });
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [taskDraft, setTaskDraft] = useState<TaskDraft>(emptyTask);
@@ -78,6 +83,43 @@ export function ProjectWorkspace({ onActiveProjectChange }: { onActiveProjectCha
   }
 
   useEffect(() => { void loadProjects(); }, []);
+  useEffect(() => { onDraftPendingChange(Boolean(planDraft) || generatingPlan); }, [planDraft, generatingPlan, onDraftPendingChange]);
+  useEffect(() => {
+    if (!planDraft) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [planDraft]);
+
+  async function generatePlan() {
+    if (!planInput.name.trim() || !planInput.goal.trim() || generatingPlan) return;
+    setGeneratingPlan(true); setPlanError('');
+    try {
+      const result = await apiRequest<GeneratedPlan>('/api/generate-project', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(planInput),
+      });
+      setPlanDraft(result);
+    } catch (caught) {
+      setPlanError(caught instanceof Error ? caught.message : 'Could not generate a draft.');
+    } finally { setGeneratingPlan(false); }
+  }
+
+  async function saveGeneratedPlan() {
+    if (!planDraft || saving) return;
+    setSaving(true); setPlanError('');
+    try {
+      const created = await apiRequest<ProjectDetail>('/api/projects/from-draft', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: planDraft.name, goal: planDraft.goal, tasks: planDraft.tasks }),
+      });
+      setPlanDraft(null); setPlanInput({ name: '', goal: '' });
+      await loadProjects(created.project_id);
+      setNotice('Reviewed project saved. Choose Use on Today when you are ready.');
+    } catch (caught) {
+      setPlanError(caught instanceof Error ? caught.message : 'Could not save the reviewed project.');
+    } finally { setSaving(false); }
+  }
 
   async function selectProject(projectId: string) {
     if (saving) return;
@@ -228,6 +270,16 @@ export function ProjectWorkspace({ onActiveProjectChange }: { onActiveProjectCha
 
   return <section className="projects-only project-workspace" aria-label="Project workspace">
     <div className="projects-heading"><div><p className="eyebrow">PROJECT WORKSPACE</p><h2>Choose what Today should move forward.</h2><p>Create concrete tasks here, then activate the project you want the morning planner to use.</p></div><Button onClick={() => setCreatingProject(true)} disabled={saving}><Plus aria-hidden="true" />New project</Button></div>
+    <Card className="project-plan-card">
+      {!planDraft && <><div><p className="eyebrow">AI PLAN DRAFT</p><h3>Get a starting plan to review.</h3><p>Describe a project and its goal. Review every suggested task before saving anything.</p></div>
+      <form onSubmit={event => { event.preventDefault(); void generatePlan(); }}>
+        <div><Label htmlFor="plan-project-name">Project name</Label><Input id="plan-project-name" required value={planInput.name} disabled={generatingPlan} onChange={event => setPlanInput(current => ({ ...current, name: event.target.value }))} placeholder="Personal finance API" /></div>
+        <div><Label htmlFor="plan-project-goal">Goal</Label><Textarea id="plan-project-goal" required value={planInput.goal} disabled={generatingPlan} onChange={event => setPlanInput(current => ({ ...current, goal: event.target.value }))} placeholder="Help me learn FastAPI through a useful app." /></div>
+        <Button type="submit" disabled={generatingPlan || !planInput.name.trim() || !planInput.goal.trim()}>{generatingPlan ? 'Generating…' : 'Generate draft'}</Button>
+      </form></>}
+      {planError && <Alert variant="destructive"><AlertDescription>{planError}</AlertDescription></Alert>}
+      {planDraft && <GeneratedPlanReview plan={planDraft} onChange={setPlanDraft} onSave={() => void saveGeneratedPlan()} onDiscard={() => { if (window.confirm('Discard this unsaved plan draft?')) { setPlanDraft(null); setPlanError(''); } }} saving={saving} />}
+    </Card>
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     {notice && <p className="project-notice" role="status">{notice}</p>}
     {creatingProject && <Card className="project-create-card"><div><Label htmlFor="new-project-name">Project name</Label><Input id="new-project-name" value={newProject.name} onChange={event => setNewProject(current => ({ ...current, name: event.target.value }))} placeholder="Build a personal finance API" /></div><div><Label htmlFor="new-project-goal">Goal</Label><Textarea id="new-project-goal" value={newProject.goal} onChange={event => setNewProject(current => ({ ...current, goal: event.target.value }))} placeholder="What should this project help you learn or accomplish?" /></div><div className="project-form-actions"><Button variant="ghost" onClick={() => setCreatingProject(false)}><X aria-hidden="true" />Cancel</Button><Button disabled={saving || !newProject.name.trim()} onClick={() => void createNewProject()}>{saving ? 'Creating...' : 'Create project'}</Button></div></Card>}

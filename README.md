@@ -69,6 +69,9 @@ SQLite data is stored locally in `progress.db`, which is created automatically i
 - Review focused minutes in a 12-week activity heatmap.
 - Tag finished focus sessions with concepts and explore their shared-task connections in the Knowledge map.
 - Show plan validation and API errors.
+- Generate an editable project plan draft from a project name and goal in Projects. Review the suggested tasks and prerequisites, then explicitly save them as a new project. Generation alone does not save anything.
+
+The draft generator needs `OPENAI_API_KEY` in the backend process environment or the project-root `.env` file. The key stays on the backend. `POST /api/generate-project` returns structured suggestions; `POST /api/projects/from-draft` saves the reviewed project and tasks together. A saved project does not replace the active project until you choose **Use on Today**.
 
 Enter a date, morning/work start times, and routine, gym, and buffer durations, then choose **Plan my morning**.
 The dashboard sends same-day local timestamps to POST /api/morning-plan.
@@ -76,7 +79,7 @@ It displays the programming budget, any overbooking, and the backend's recommend
 Zero durations are allowed. A zero budget has no task; a negative budget displays the time deficit.
 Progress changes and Refresh recalculate using the last submitted inputs. Form edits apply only on submission; refresh of the browser loads your saved defaults with today's date.
 You can still inspect any task in the list and return to the recommendation.
-The morning planner displays the backend's ordered activity blocks with start/end times and durations. Zero-duration activities are omitted by the backend, and overbooked plans show a shortage without a schedule. The programming block covers the full available window, even if the selected task is shorter or no task fits. Generated learning plans remain a future step.
+The morning planner displays the backend's ordered activity blocks with start/end times and durations. Zero-duration activities are omitted by the backend, and overbooked plans show a shortage without a schedule. The programming block covers the full available window, even if the selected task is shorter or no task fits.
 Use the **Projects** workspace to create, edit, activate, reorder, and delete projects and tasks. The active project's tasks drive Today. On the first startup only, an empty database imports `project_plan.json`; after that SQLite is the source of truth. Progress belongs to task IDs, so IDs remain stable across task edits.
 Reopening a prerequisite blocks unfinished dependents; previously completed work keeps its status. Project and task validation rejects unknown prerequisites, self-dependencies, and dependency cycles.
 

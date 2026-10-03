@@ -5,12 +5,14 @@ from typing import Literal
 from datetime import date, datetime
 from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
+import os
+from dotenv import load_dotenv
 
 
 from fastapi import FastAPI, HTTPException, Query, status
 from database import (
-    create_project, create_task, delete_project, delete_task, finish_work_session,
+    create_project, create_project_with_tasks, create_task, delete_project, delete_task, finish_work_session,
     get_active_project, get_active_session, get_all_sessions, get_preferences,
     get_progress, get_project as get_stored_project, get_project_dependencies,
     get_project_task_ids, get_task_note, get_task_project_id, get_work_session,
@@ -26,19 +28,75 @@ PLAN_PATH = Path(__file__).resolve().parent.parent / 'project_plan.json'
 LEGACY_PROJECT_ID = 'project-001'
 
 
+def new_project_id() -> str:
+    return 'project-' + uuid4().hex
+
+
 
 
 class ProjectRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
     name: str
     goal: str
 
-    @field_validator('goal')
+    @field_validator('name', 'goal')
     @classmethod
-    def goal_must_not_be_blank(cls, value):
+    def project_text_must_not_be_blank(cls, value):
         value = value.strip()
         if not value:
-            raise ValueError('Concept name must not be blank')
+            raise ValueError('Project name and goal must not be blank')
         return value
+
+
+class DraftTask(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    draft_id: str
+    title: str
+    deliverable: str
+    first_action: str
+    completion_check: str
+    estimated_minutes: int = Field(gt=0, strict=True)
+    prerequisites: list[str]
+
+    @field_validator('draft_id', 'title', 'deliverable', 'first_action', 'completion_check')
+    @classmethod
+    def trim_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError('Task fields must not be blank')
+        return value
+
+    @field_validator('prerequisites')
+    @classmethod
+    def clean_prerequisites(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip() for value in values]
+        if any(not value for value in cleaned) or len(cleaned) != len(set(cleaned)):
+            raise ValueError('Prerequisites must be nonblank and unique')
+        return cleaned
+
+
+class GeneratedPlan(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    summary: str
+    assumptions: list[str]
+    tasks: list[DraftTask]
+
+
+class ReviewedProject(ProjectRequest):
+    tasks: list[DraftTask] = Field(min_length=1)
+
+
+def validate_draft_dependencies(tasks: list[DraftTask]) -> str | None:
+    seen: set[str] = set()
+    for task in tasks:
+        if task.draft_id in seen:
+            return f'Duplicate draft task ID: {task.draft_id}'
+        if any(prerequisite not in seen for prerequisite in task.prerequisites):
+            return f'{task.draft_id} must depend only on earlier tasks'
+        seen.add(task.draft_id)
+    return None
+
+
 class MorningPlanRequest(BaseModel):
     morning_start: datetime
     work_start: datetime
@@ -316,7 +374,7 @@ def read_project(project_id: str):
 
 @app.post('/api/projects', status_code=status.HTTP_201_CREATED)
 def add_project(request: ProjectCreate):
-    project_id = 'project-' + uuid4().hex[:12]
+    project_id = new_project_id()
     project = create_project(project_id, request.name, request.goal)
     return project_with_task_state(project)
 
@@ -488,33 +546,66 @@ def get_concepts():
     return read_concepts()
 ## read endpoint that return list of concepts as nodes and connects pairs used in the same task
 
-@app.get('/api/generate-project')
+@app.post('/api/generate-project')
 def generate_project_plan(request: ProjectRequest):
-     client = OpenAI()
-     response = client.responses.create(
-         model='gpt-6-astra',
-         reasoning={'effort':'high'},
-         instructions=""" You create draft software project plans for Morning Plan.
+    load_dotenv(PLAN_PATH.parent / '.env')
+    if not os.getenv('OPENAI_API_KEY'):
+        raise HTTPException(status_code=503, detail='OpenAI API key is not configured')
+
+    client = OpenAI()
+    try:
+        response = client.responses.parse(
+            model='gpt-6-astra',
+            reasoning={'effort': 'high'},
+            text_format=GeneratedPlan,
+            instructions="""You create draft software project plans for Morning Plan.
 
 Turn the user's goal into one small, usable MVP. Choose a stack that fits their
 experience and constraints, and explain the choice in plain language.
 
-Create 6–12 tasks in build order. Each task must have:
+Create 6-12 tasks in build order. Give each task a unique draft_id such as
+draft-1, draft-2, and so on. Each task must have:
 - a specific title and concrete deliverable
 - a first action the user can start immediately
 - an observable completion check
-- a positive time estimate, usually 30–120 minutes
-- prerequisites referencing only earlier tasks
+- a positive time estimate, usually 30-120 minutes
+- prerequisites containing only the draft_ids of earlier tasks
 
 Make each task small enough for one focus session. Include an early working
 backend-to-UI slice so the user can see progress. Avoid vague tasks such as
 "learn Python" or unnecessary infrastructure.
 
-This is a draft, not completed work. If details are missing, make modest
-assumptions and list them. Do not save anything.""",
-        input=f'{"goal": request.name, "name": request.goal}'
+Give a brief summary and list any modest assumptions. This is a draft for
+review. Do not save anything.""",
+            input=f'Project name: {request.name}\nGoal: {request.goal}',
+        )
+    except OpenAIError as exc:
+        raise HTTPException(status_code=502, detail='Could not generate a project draft') from exc
 
-     )
+    draft = response.output_parsed
+    if draft is None or not draft.summary.strip() or not 6 <= len(draft.tasks) <= 12:
+        raise HTTPException(status_code=502, detail='The model returned an incomplete draft')
+    error = validate_draft_dependencies(draft.tasks)
+    if error:
+        raise HTTPException(status_code=502, detail='The model returned invalid task dependencies')
+    return {'name': request.name, 'goal': request.goal, **draft.model_dump()}
 
-     ## add openai key
-     ## do something with the data returned and format it into tasks and so on
+
+@app.post('/api/projects/from-draft', status_code=status.HTTP_201_CREATED)
+def save_reviewed_project(request: ReviewedProject):
+    error = validate_draft_dependencies(request.tasks)
+    if error:
+        raise HTTPException(status_code=422, detail=error)
+
+    project_id = new_project_id()
+    ids = {task.draft_id: 'task-' + uuid4().hex[:12] for task in request.tasks}
+    tasks = [
+        {
+            **task.model_dump(exclude={'draft_id', 'prerequisites'}),
+            'id': ids[task.draft_id],
+            'prerequisites': [ids[item] for item in task.prerequisites],
+        }
+        for task in request.tasks
+    ]
+    project = create_project_with_tasks(project_id, request.name, request.goal, tasks)
+    return project_with_task_state(project)
